@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40" width="160" height="40">
+  <defs>
+    <linearGradient id="xgd" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <path d="M8 8 L22 32 M22 8 L8 32" stroke="url(#xgd)" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <text x="34" y="27" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="800" fill="#f8fafc">Xyberah</text>
+</svg>

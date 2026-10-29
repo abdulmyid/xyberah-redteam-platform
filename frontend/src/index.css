@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-primary: #6d28d9;
+  --brand-secondary: #0ea5e9;
+  --brand-accent: #f43f5e;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-slate-50 text-slate-900 antialiased; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed; }
+  .btn-primary { @apply btn text-white; background: var(--brand-primary); }
+  .btn-ghost { @apply btn border border-slate-300 bg-white hover:bg-slate-100; }
+  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
+  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+  .input { @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2; }
+  .input:focus { --tw-ring-color: var(--brand-primary); }
+  .label { @apply block text-sm font-medium text-slate-700 mb-1; }
+  .chip { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }
+  .tab { @apply px-4 py-2 text-sm font-medium rounded-lg cursor-pointer; }
+  .tab-active { color: var(--brand-primary); @apply bg-violet-50; }
+}
+
+.sev-critical { @apply bg-red-100 text-red-800; }
+.sev-high { @apply bg-orange-100 text-orange-800; }
+.sev-medium { @apply bg-amber-100 text-amber-800; }
+.sev-low { @apply bg-green-100 text-green-800; }

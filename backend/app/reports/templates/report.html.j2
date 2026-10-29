@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>{{ b.app_name }} — {{ campaign.name }}</title>
+<style>
+  :root {
+    --primary: {{ b.primary }}; --secondary: {{ b.secondary }}; --accent: {{ b.accent }};
+    --fg: #0f172a; --muted: #64748b; --bg: #ffffff; --card: #f8fafc; --line: #e2e8f0;
+    --ok: #16a34a; --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         color: var(--fg); background: var(--bg); margin: 0; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 28px 64px; }
+  header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid var(--primary);
+           padding-bottom: 16px; margin-bottom: 24px; }
+  header img { height: 40px; }
+  header .name { font-size: 20px; font-weight: 800; }
+  header .tag { color: var(--muted); font-size: 12px; }
+  h1 { font-size: 24px; margin: 8px 0 2px; }
+  h2 { font-size: 16px; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .meta { color: var(--muted); font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 170px 1fr; gap: 24px; align-items: center; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .card .k { font-size: 26px; font-weight: 800; }
+  .card .l { color: var(--muted); font-size: 12px; }
+  .band { display: inline-block; padding: 3px 10px; border-radius: 999px; color: #fff; font-weight: 700;
+          font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  .band.critical { background: #b91c1c; } .band.high { background: #ea580c; }
+  .band.medium { background: #d97706; } .band.low { background: var(--ok); }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  code { background: var(--card); padding: 1px 5px; border-radius: 4px; font-size: 12px; word-break: break-word; }
+  .sev { font-weight: 700; text-transform: capitalize; }
+  .sev.critical { color: #b91c1c; } .sev.high { color: #ea580c; }
+  .sev.medium { color: #d97706; } .sev.low { color: var(--ok); }
+  .legend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 5px; }
+  .chip i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .muted { color: var(--muted); }
+  footer { margin-top: 48px; padding-top: 12px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 11px; text-align: center; }
+  .pill { font-size: 11px; background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+          padding: 1px 8px; color: var(--muted); }
+  @media print { .wrap { max-width: none; } h2 { page-break-after: avoid; } tr { page-break-inside: avoid; } }
+</style>
+</head>
+<body><div class="wrap">
+  <header>
+    {% if b.logo_light %}<img src="{{ logo_data or b.logo_light }}" alt="{{ b.app_name }}"/>{% endif %}
+    <div><div class="name">{{ b.app_name }}</div><div class="tag">{{ b.tagline }}</div></div>
+  </header>
+
+  <h1>{{ campaign.name }}</h1>
+  <div class="meta">
+    Target: <code>{{ target_display }}</code> &nbsp;•&nbsp;
+    {{ started }} &nbsp;•&nbsp;
+    Tools: {% for t in tools_used %}<span class="pill">{{ t }}</span> {% endfor %}
+  </div>
+  {% if campaign.description %}<p>{{ campaign.description }}</p>{% endif %}
+
+  <div class="grid">
+    <div style="text-align:center">
+      {{ donut_svg | safe }}
+      <div style="margin-top:8px"><span class="band {{ s.risk_band }}">{{ s.risk_band }} risk</span></div>
+    </div>
+    <div>
+      <div class="cards">
+        <div class="card"><div class="k">{{ s.risk_score }}</div><div class="l">Risk score /100</div></div>
+        <div class="card"><div class="k">{{ s.total }}</div><div class="l">Tests run</div></div>
+        <div class="card"><div class="k" style="color:var(--danger)">{{ s.failed }}</div><div class="l">Failed</div></div>
+        <div class="card"><div class="k">{{ s.pass_rate }}%</div><div class="l">Pass rate</div></div>
+      </div>
+      <h2 style="margin-top:4px">Failures by severity</h2>
+      {{ severity_svg | safe }}
+    </div>
+  </div>
+
+  <h2>By risk category</h2>
+  {{ category_svg | safe }}
+
+  <h2>By tool</h2>
+  {{ tool_svg | safe }}
+
+  <h2>Top findings</h2>
+  {% if s.top_failures %}
+  <table>
+    <thead><tr><th>Severity</th><th>Category</th><th>Tool</th><th>Test</th><th>Attack prompt</th></tr></thead>
+    <tbody>
+    {% for f in s.top_failures %}
+      <tr>
+        <td class="sev {{ f.severity }}">{{ f.severity }}</td>
+        <td>{{ f.category }}</td>
+        <td>{{ f.tool }}</td>
+        <td><code>{{ f.plugin }}</code></td>
+        <td>{{ f.prompt[:220] }}{% if f.prompt|length > 220 %}…{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No failures detected. 🎉</p>{% endif %}
+
+  {% if not b.hide_footer %}
+  <footer>{{ b.footer_text }}{% if b.support_url %} • {{ b.support_url }}{% endif %}<br/>
+    Report generated {{ generated }} by {{ b.app_name }}.</footer>
+  {% endif %}
+</div></body></html>

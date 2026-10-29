@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    image: xyberah-backend:latest
+    environment:
+      # First global admin (created once, on first boot)
+      XYBERAH_ADMIN_USERNAME: ${XYBERAH_ADMIN_USERNAME:-admin@xyberah.local}
+      XYBERAH_ADMIN_PASSWORD: ${XYBERAH_ADMIN_PASSWORD:?set XYBERAH_ADMIN_PASSWORD in .env}
+      XYBERAH_COOKIE_SECURE: "true"
+      XYBERAH_GRADER: ${XYBERAH_GRADER:-openai:chat:gpt-4.1-mini}
+      # Model-provider keys used by scans (add the ones you need)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - data:/data
+      - config:/config
+      - tools:/opt/tools
+      - certs:/certs
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  proxy:
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
+    image: xyberah-proxy:latest
+    depends_on:
+      - backend
+    environment:
+      BACKEND_UPSTREAM: backend:8000
+    ports:
+      - "${XYBERAH_HTTPS_PORT:-8443}:443"
+    volumes:
+      - certs:/certs
+      - caddy_data:/data   # Caddy's internal CA / self-signed cert store
+    restart: unless-stopped
+
+volumes:
+  data:
+  config:
+  tools:
+  certs:
+  caddy_data:

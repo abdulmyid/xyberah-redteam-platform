@@ -1,0 +1,66 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { api, atLeast } from "../lib/api";
+import { useApp } from "../lib/context.jsx";
+import { Status, RiskGauge } from "../components/ui.jsx";
+
+export default function Dashboard() {
+  const { user } = useApp();
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => api.get("/api/campaigns").then(setCampaigns).finally(() => setLoading(false));
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 5000); // keep running campaigns fresh
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-extrabold">Campaigns</h1>
+          <p className="text-sm text-slate-500">Red-teaming and security evaluation runs for your company.</p>
+        </div>
+        {atLeast(user.role, "analyst") && (
+          <Link to="/campaigns/new" className="btn-primary">+ New campaign</Link>
+        )}
+      </div>
+
+      {loading ? (
+        <p className="text-slate-500">Loading…</p>
+      ) : campaigns.length === 0 ? (
+        <div className="card p-10 text-center text-slate-500">
+          No campaigns yet.{" "}
+          {atLeast(user.role, "analyst") && <Link to="/campaigns/new" style={{ color: "var(--brand-primary)" }}>Create your first one.</Link>}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {campaigns.map((c) => (
+            <Link to={`/campaigns/${c.id}`} key={c.id} className="card p-5 hover:shadow-md transition flex gap-4">
+              <RiskGauge score={c.summary?.risk_score || 0} band={c.summary?.risk_band || "low"} size={96} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold truncate">{c.name}</h3>
+                  <Status value={c.status} />
+                </div>
+                <div className="text-xs text-slate-500 truncate">{c.target_display}</div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {["promptfoo", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => (
+                    <span key={t} className="chip bg-slate-100 text-slate-600">{t}</span>
+                  ))}
+                </div>
+                {c.summary && (
+                  <div className="mt-2 text-xs text-slate-600">
+                    {c.summary.failed} failed / {c.summary.total} tests · {c.summary.pass_rate}% pass
+                  </div>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

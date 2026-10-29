@@ -1,0 +1,11 @@
+app_name: Xyberah
+tagline: AI Red-Teaming & Security Evaluation
+logo_light: /static/branding/logo-light.svg
+logo_dark: /static/branding/logo-dark.svg
+favicon: /static/branding/favicon.svg
+primary: '#6d28d9'
+secondary: '#0ea5e9'
+accent: '#f43f5e'
+hide_footer: false
+footer_text: Built by xyberah.com · Powered by Promptfoo, garak, PyRIT and Inspect AI
+support_url: ''

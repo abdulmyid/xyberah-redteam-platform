@@ -1,0 +1,34 @@
+{
+	# Generated/overwritten by entrypoint before Caddy starts.
+	# `tls internal` => Caddy's own self-signed cert (default).
+	auto_https disable_redirects
+	admin localhost:2019
+}
+
+https://:443 {
+	import tls_directive
+
+	encode zstd gzip
+
+	# API, live event stream, uploaded assets, and OpenAPI go to the backend
+	@backend path /api/* /uploads/*
+	handle @backend {
+		reverse_proxy {$BACKEND_UPSTREAM} {
+			flush_interval -1
+		}
+	}
+
+	# Public share + invite links are SPA routes; everything else is the app shell
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
