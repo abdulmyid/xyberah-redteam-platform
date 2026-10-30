@@ -1,0 +1,14 @@
+{
+  "name": "xyberah-browser-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless browser bridge: evaluate a chat-UI-only model with Xyberah/Promptfoo.",
+  "bin": { "chat-bridge": "automated_chat_bridge.js" },
+  "scripts": {
+    "test": "./run_tests.sh",
+    "probe": "node automated_chat_bridge.js"
+  },
+  "dependencies": {
+    "playwright": "1.48.2"
+  }
+}

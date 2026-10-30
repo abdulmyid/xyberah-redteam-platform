@@ -87,6 +87,11 @@ class ToolSelection(BaseModel):
     garak_generations: int = 5
 
 
+class TargetTestIn(BaseModel):
+    target: Target
+    prompt: str = ""
+
+
 class CampaignIn(BaseModel):
     name: str
     description: str = ""

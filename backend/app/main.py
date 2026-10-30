@@ -10,7 +10,8 @@ from .auth import bootstrap_global_admin
 from .config import get_settings
 from .db import engine, init_db
 from .routers import (admin_routes, audit_routes, auth_routes, campaign_routes,
-                      demo_routes, report_routes, settings_routes, tls_routes)
+                      demo_routes, report_routes, settings_routes, target_routes,
+                      tls_routes)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("xyberah")
@@ -47,7 +48,7 @@ async def _audit(request, call_next):
 
 for r in (auth_routes.router, admin_routes.router, campaign_routes.router,
           report_routes.router, settings_routes.router, tls_routes.router,
-          audit_routes.router, demo_routes.router):
+          audit_routes.router, demo_routes.router, target_routes.router):
     app.include_router(r)
 
 # Uploaded company logos (served read-only; proxy also serves these)

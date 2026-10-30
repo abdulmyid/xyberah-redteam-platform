@@ -51,6 +51,32 @@ export default function NewCampaign() {
   const [purpose, setPurpose] = useState("");
   const [target, setTarget] = useState({ type: "openai", model: "gpt-4.1-mini", base_url: "", system_prompt: "" });
   const [http, setHttp] = useState({ url: "", method: "POST", body: '{"message":"{{prompt}}"}', response_path: "reply", headers: "" });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+
+  function buildTarget() {
+    const t = { ...target };
+    if (target.type === "demo") return { type: "demo" };
+    if (target.type === "http") {
+      t.http = {
+        url: http.url, method: http.method,
+        body: JSON.parse(http.body || "{}"),
+        response_path: http.response_path,
+        headers: http.headers ? JSON.parse(http.headers) : {},
+      };
+    }
+    return t;
+  }
+
+  async function testConnection() {
+    setTestResult(null); setTesting(true);
+    try {
+      const r = await api.post("/api/targets/test", { target: buildTarget() });
+      setTestResult(r);
+    } catch (e) {
+      setTestResult({ ok: false, error: e.message });
+    } finally { setTesting(false); }
+  }
   const [tools, setTools] = useState({
     promptfoo: true, garak: false, pyrit: false, inspect: false,
     promptfoo_plugins: [], promptfoo_strategies: ["basic"], garak_probes: [],
@@ -64,19 +90,9 @@ export default function NewCampaign() {
   async function submit(e) {
     e.preventDefault();
     setErr("");
-    let t = { ...target };
-    if (target.type === "demo") {
-      t = { type: "demo" }; // backend fills the built-in target
-    } else if (target.type === "http") {
-      try {
-        t.http = {
-          url: http.url, method: http.method,
-          body: JSON.parse(http.body || "{}"),
-          response_path: http.response_path,
-          headers: http.headers ? JSON.parse(http.headers) : {},
-        };
-      } catch { return setErr("HTTP body/headers must be valid JSON"); }
-    }
+    let t;
+    try { t = buildTarget(); }
+    catch { return setErr("HTTP body/headers must be valid JSON"); }
     try {
       const r = await api.post("/api/campaigns", {
         name, description: "", target: t, tools: { ...tools, purpose },
@@ -137,18 +153,47 @@ export default function NewCampaign() {
                         onChange={(e) => setTarget({ ...target, system_prompt: e.target.value })} /></div>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2"><label className="label">Endpoint URL</label>
-              <input className="input" value={http.url} onChange={(e) => setHttp({ ...http, url: e.target.value })} required /></div>
-            <div><label className="label">Response JSON path</label>
-              <input className="input" value={http.response_path} onChange={(e) => setHttp({ ...http, response_path: e.target.value })} /></div>
-            <div><label className="label">Headers (JSON, optional)</label>
-              <input className="input" value={http.headers} placeholder='{"Authorization":"Bearer ..."}'
+          <div className="grid sm:grid-cols-6 gap-4">
+            <div className="sm:col-span-2"><label className="label">Method</label>
+              <select className="input" value={http.method} onChange={(e) => setHttp({ ...http, method: e.target.value })}>
+                <option value="POST">POST</option>
+                <option value="GET">GET</option>
+              </select></div>
+            <div className="sm:col-span-4"><label className="label">Endpoint URL</label>
+              <input className="input" value={http.url} placeholder="https://your-app.example/chat"
+                     onChange={(e) => setHttp({ ...http, url: e.target.value })} required /></div>
+            <div className="sm:col-span-3"><label className="label">Response JSON path</label>
+              <input className="input" value={http.response_path} placeholder="reply  or  choices.0.message.content"
+                     onChange={(e) => setHttp({ ...http, response_path: e.target.value })} /></div>
+            <div className="sm:col-span-3"><label className="label">Headers (JSON, optional)</label>
+              <input className="input" value={http.headers} placeholder='{"Authorization":"Bearer sk-..."}'
                      onChange={(e) => setHttp({ ...http, headers: e.target.value })} /></div>
-            <div className="sm:col-span-2"><label className="label">Request body (JSON, use {"{{prompt}}"})</label>
+            <div className="sm:col-span-6"><label className="label">Request body (JSON, use {"{{prompt}}"} where the message goes)</label>
               <textarea className="input font-mono text-xs" rows={2} value={http.body}
                         onChange={(e) => setHttp({ ...http, body: e.target.value })} /></div>
-            <p className="sm:col-span-2 text-xs text-amber-600">Inspect AI does not support custom HTTP targets; that stage will be skipped.</p>
+            <div className="sm:col-span-6 flex items-center gap-3">
+              <button type="button" className="btn-ghost" onClick={testConnection} disabled={testing || !http.url}>
+                {testing ? "Testing…" : "Test connection"}
+              </button>
+              <span className="text-xs text-slate-500">Sends one sample prompt from the server to check reachability, auth and the response path.</span>
+            </div>
+            {testResult && (
+              <div className={`sm:col-span-6 rounded-lg px-3 py-2 text-sm ${testResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>
+                <div className="font-semibold">
+                  {testResult.ok ? "✓ Connection OK" : "✗ Test failed"}
+                  {testResult.status ? ` (HTTP ${testResult.status})` : ""}
+                </div>
+                {testResult.reply && <div className="mt-1">Extracted reply: <span className="font-mono">{testResult.reply}</span></div>}
+                {testResult.error && <div className="mt-1">{testResult.error}</div>}
+                {testResult.extract_error && <div className="mt-1">{testResult.extract_error}</div>}
+                {testResult.tls_note && <div className="mt-1 text-amber-700">{testResult.tls_note}</div>}
+                {testResult.raw && !testResult.reply && (
+                  <details className="mt-1"><summary className="cursor-pointer">Raw response</summary>
+                    <pre className="mt-1 bg-white/60 p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap text-xs">{testResult.raw}</pre></details>
+                )}
+              </div>
+            )}
+            <p className="sm:col-span-6 text-xs text-amber-600">Inspect AI does not support custom HTTP targets; that stage will be skipped.</p>
           </div>
         )}
       </section>
