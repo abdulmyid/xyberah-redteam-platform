@@ -29,15 +29,17 @@ RUN npm install -g "promptfoo@${PROMPTFOO_VERSION}" && npm cache clean --force
 ARG GARAK_VERSION=0.17.0
 ARG PYRIT_VERSION=1.1.0
 ARG INSPECT_VERSION=0.3.286
+# All three venvs + the move happen in ONE layer so the seed copy does not get
+# duplicated against a parent layer (which previously ~doubled the image size).
 RUN python -m venv /opt/tools/garak \
  && /opt/tools/garak/bin/pip install --no-cache-dir \
-      --extra-index-url https://download.pytorch.org/whl/cpu "garak==${GARAK_VERSION}"
-RUN python -m venv /opt/tools/pyrit \
+      --extra-index-url https://download.pytorch.org/whl/cpu "garak==${GARAK_VERSION}" \
+ && python -m venv /opt/tools/pyrit \
  && /opt/tools/pyrit/bin/pip install --no-cache-dir \
-      --extra-index-url https://download.pytorch.org/whl/cpu "pyrit==${PYRIT_VERSION}"
-RUN python -m venv /opt/tools/inspect \
- && /opt/tools/inspect/bin/pip install --no-cache-dir "inspect-ai==${INSPECT_VERSION}"
-RUN mv /opt/tools /opt/tools-seed
+      --extra-index-url https://download.pytorch.org/whl/cpu "pyrit==${PYRIT_VERSION}" \
+ && python -m venv /opt/tools/inspect \
+ && /opt/tools/inspect/bin/pip install --no-cache-dir "inspect-ai==${INSPECT_VERSION}" \
+ && mv /opt/tools /opt/tools-seed
 
 # ---- backend app ----------------------------------------------------------- #
 WORKDIR /opt/xyberah-app
@@ -47,6 +49,14 @@ COPY app ./app
 COPY engine ./engine
 COPY entrypoint.sh /usr/local/bin/xyberah-entrypoint
 RUN chmod +x /usr/local/bin/xyberah-entrypoint
+
+# Playwright + Chromium for the "Browser (web chat UI)" target bridge.
+# Installed into the engine dir so Promptfoo's JS provider can require('playwright').
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN cd engine && npm init -y >/dev/null 2>&1 && \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright@1.48.2 && \
+    npx playwright install --with-deps chromium && \
+    npm cache clean --force && rm -rf /root/.npm
 
 ENV XYBERAH_DATA_DIR=/data \
     XYBERAH_TOOLS_DIR=/opt/tools \

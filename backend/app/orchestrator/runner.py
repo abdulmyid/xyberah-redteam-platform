@@ -133,6 +133,13 @@ def _run_campaign(campaign_id: int) -> None:
 
 def _run_stage(campaign_id: int, tool: str, target: Target, tools: dict[str, Any],
                workdir: Path, stop: threading.Event) -> list[dict[str, Any]]:
+    # Only Promptfoo can drive a web chat UI (via the Playwright bridge); garak,
+    # PyRIT and Inspect need an HTTP/provider endpoint, so they skip for browser targets.
+    if target.type == "browser" and tool != "promptfoo":
+        from .events import bus
+        bus.publish(campaign_id, "log", tool=tool,
+                    line=f"[{tool}] skipped: not supported for web chat UI (browser) targets")
+        return []
     if tool == "promptfoo":
         return _run_promptfoo(campaign_id, target, tools, workdir / "promptfoo", stop)
     if tool == "pyrit":

@@ -8,7 +8,79 @@ const TARGET_TYPES = [
   { id: "anthropic", label: "Anthropic" },
   { id: "ollama", label: "Ollama (local)" },
   { id: "http", label: "Custom HTTP endpoint" },
+  { id: "browser", label: "Web chat UI (browser)" },
 ];
+
+// --- Parse a pasted `curl` command into method/url/headers/body -------------
+function tokenizeCurl(input) {
+  const s = input.replace(/\\\r?\n/g, " ").replace(/^\s*curl\s+/, "curl ").trim();
+  const tokens = [];
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && /\s/.test(s[i])) i++;
+    if (i >= s.length) break;
+    let tok = "";
+    if (s[i] === "'" || s[i] === '"') {
+      const q = s[i++];
+      while (i < s.length && s[i] !== q) {
+        if (s[i] === "\\" && q === '"' && i + 1 < s.length) { tok += s[i + 1]; i += 2; }
+        else tok += s[i++];
+      }
+      i++;
+    } else {
+      while (i < s.length && !/\s/.test(s[i])) {
+        if (s[i] === "\\" && i + 1 < s.length) { tok += s[i + 1]; i += 2; }
+        else tok += s[i++];
+      }
+    }
+    tokens.push(tok);
+  }
+  return tokens;
+}
+
+function parseCurl(input) {
+  const t = tokenizeCurl(input);
+  let url = "", method = "", body = "";
+  const headers = {}, dataParts = [];
+  for (let i = 0; i < t.length; i++) {
+    const a = t[i];
+    if (a === "curl") continue;
+    else if (a === "-X" || a === "--request") method = (t[++i] || "").toUpperCase();
+    else if (a === "-H" || a === "--header") {
+      const h = t[++i] || ""; const idx = h.indexOf(":");
+      if (idx > 0) headers[h.slice(0, idx).trim()] = h.slice(idx + 1).trim();
+    } else if (["-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode"].includes(a)) {
+      dataParts.push(t[++i] || "");
+    } else if (a === "--url") url = t[++i] || "";
+    else if (a === "-u" || a === "--user") headers["Authorization"] = "Basic " + btoa(t[++i] || "");
+    else if (a === "-b" || a === "--cookie") headers["Cookie"] = t[++i] || "";
+    else if (/^https?:\/\//i.test(a)) url = a;
+  }
+  body = dataParts.join("&");
+  if (!method) method = dataParts.length ? "POST" : "GET";
+  return { url, method, headers, body };
+}
+
+// Insert {{prompt}} into the most likely "message" field of a JSON body.
+function injectPromptPlaceholder(bodyStr) {
+  try {
+    const obj = JSON.parse(bodyStr);
+    const keyRe = /^(content|message|prompt|text|input|query|q|user_message|question)$/i;
+    const matches = [];
+    const walk = (o) => {
+      if (Array.isArray(o)) o.forEach(walk);
+      else if (o && typeof o === "object") {
+        for (const k of Object.keys(o)) {
+          if (keyRe.test(k) && typeof o[k] === "string") matches.push([o, k]);
+          walk(o[k]);
+        }
+      }
+    };
+    walk(obj);
+    if (matches.length) { const [p, k] = matches[matches.length - 1]; p[k] = "{{prompt}}"; }
+    return { body: JSON.stringify(obj, null, 2), replaced: matches.length > 0 };
+  } catch { return { body: bodyStr, replaced: false }; }
+}
 
 function Toggle({ on, set, label, desc }) {
   return (
@@ -53,10 +125,19 @@ export default function NewCampaign() {
   const [http, setHttp] = useState({ url: "", method: "POST", body: '{"message":"{{prompt}}"}', response_path: "reply", headers: "" });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [curlText, setCurlText] = useState("");
+  const [curlMsg, setCurlMsg] = useState("");
+  const [browser, setBrowser] = useState({
+    url: "", input_selector: "textarea[data-testid='chat-input']",
+    send_button_selector: "button[data-testid='send-button']",
+    response_bubble_selector: "[data-message-author-role='assistant']",
+    streaming_indicator_selector: "button[aria-label='Stop generating']",
+  });
 
   function buildTarget() {
     const t = { ...target };
     if (target.type === "demo") return { type: "demo" };
+    if (target.type === "browser") return { type: "browser", browser: { ...browser } };
     if (target.type === "http") {
       t.http = {
         url: http.url, method: http.method,
@@ -66,6 +147,29 @@ export default function NewCampaign() {
       };
     }
     return t;
+  }
+
+  function applyCurl() {
+    setCurlMsg("");
+    if (!curlText.trim()) return;
+    try {
+      const parsed = parseCurl(curlText);
+      if (!parsed.url) { setCurlMsg("Could not find a URL in that curl command."); return; }
+      const { body, replaced } = injectPromptPlaceholder(parsed.body || "");
+      setHttp({
+        url: parsed.url,
+        method: parsed.method === "GET" ? "GET" : "POST",
+        headers: Object.keys(parsed.headers).length ? JSON.stringify(parsed.headers) : "",
+        body: body || '{"message":"{{prompt}}"}',
+        response_path: http.response_path,
+      });
+      setTestResult(null);
+      setCurlMsg(replaced
+        ? "Parsed ✓ — {{prompt}} was inserted into the message field. Set the response path, then Test connection."
+        : "Parsed ✓ — now replace your test message in the body with {{prompt}}, set the response path, then Test connection.");
+    } catch {
+      setCurlMsg("Could not parse that curl command.");
+    }
   }
 
   async function testConnection() {
@@ -129,6 +233,11 @@ export default function NewCampaign() {
                   garak_probes: t.garak_probes.length ? t.garak_probes
                     : ["promptinject", "web_injection"] }));
               }
+              // Only Promptfoo can drive a browser UI
+              if (tt.id === "browser") {
+                setTools((t) => ({ ...t, promptfoo: true, garak: false, pyrit: false, inspect: false }));
+              }
+              setTestResult(null);
             }}
               className={`tab border ${target.type === tt.id ? "tab-active" : "border-slate-200"}`}>{tt.label}</button>
           ))}
@@ -138,6 +247,42 @@ export default function NewCampaign() {
             A built-in, deliberately-vulnerable chatbot. Needs no API key or setup — ideal for a
             first run. Pair it with <b>garak</b> probes below (promptinject, leakreplay,
             web_injection, encoding) to get findings without a grading model.
+          </div>
+        ) : target.type === "browser" ? (
+          <div className="grid sm:grid-cols-2 gap-4">
+            <p className="sm:col-span-2 text-xs text-slate-500">
+              For a model reachable only through a web chat window. A headless browser types each
+              prompt and scrapes the reply. Set the DOM selectors to match your UI (right-click →
+              Inspect). Only the Promptfoo stage runs for browser targets.
+            </p>
+            <div className="sm:col-span-2"><label className="label">Chat UI URL</label>
+              <input className="input" value={browser.url} placeholder="https://your-app.example/chat"
+                     onChange={(e) => setBrowser({ ...browser, url: e.target.value })} required /></div>
+            <div><label className="label">Input selector</label>
+              <input className="input font-mono text-xs" value={browser.input_selector}
+                     onChange={(e) => setBrowser({ ...browser, input_selector: e.target.value })} /></div>
+            <div><label className="label">Send button selector (blank = Enter)</label>
+              <input className="input font-mono text-xs" value={browser.send_button_selector}
+                     onChange={(e) => setBrowser({ ...browser, send_button_selector: e.target.value })} /></div>
+            <div><label className="label">Assistant bubble selector</label>
+              <input className="input font-mono text-xs" value={browser.response_bubble_selector}
+                     onChange={(e) => setBrowser({ ...browser, response_bubble_selector: e.target.value })} /></div>
+            <div><label className="label">Streaming indicator selector (optional)</label>
+              <input className="input font-mono text-xs" value={browser.streaming_indicator_selector}
+                     onChange={(e) => setBrowser({ ...browser, streaming_indicator_selector: e.target.value })} /></div>
+            <div className="sm:col-span-2 flex items-center gap-3">
+              <button type="button" className="btn-ghost" onClick={testConnection} disabled={testing || !browser.url}>
+                {testing ? "Testing…" : "Test connection"}
+              </button>
+              <span className="text-xs text-slate-500">Drives the chat UI once with a sample prompt (can take ~10–20s).</span>
+            </div>
+            {testResult && (
+              <div className={`sm:col-span-2 rounded-lg px-3 py-2 text-sm ${testResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>
+                <div className="font-semibold">{testResult.ok ? "✓ Scraped a reply" : "✗ Test failed"}</div>
+                {testResult.reply && <div className="mt-1">Reply: <span className="font-mono">{testResult.reply}</span></div>}
+                {testResult.error && <div className="mt-1">{testResult.error}</div>}
+              </div>
+            )}
           </div>
         ) : target.type !== "http" ? (
           <div className="grid sm:grid-cols-2 gap-4">
@@ -154,6 +299,16 @@ export default function NewCampaign() {
           </div>
         ) : (
           <div className="grid sm:grid-cols-6 gap-4">
+            <div className="sm:col-span-6 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="label">Paste a curl command to auto-fill (optional)</label>
+              <textarea className="input font-mono text-xs" rows={3} value={curlText}
+                        placeholder={"curl https://your-app/chat -H 'Authorization: Bearer sk-...' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"message\":\"hello\"}'"}
+                        onChange={(e) => setCurlText(e.target.value)} />
+              <div className="mt-2 flex items-center gap-3">
+                <button type="button" className="btn-ghost" onClick={applyCurl} disabled={!curlText.trim()}>Parse curl</button>
+                {curlMsg && <span className="text-xs text-slate-600">{curlMsg}</span>}
+              </div>
+            </div>
             <div className="sm:col-span-2"><label className="label">Method</label>
               <select className="input" value={http.method} onChange={(e) => setHttp({ ...http, method: e.target.value })}>
                 <option value="POST">POST</option>

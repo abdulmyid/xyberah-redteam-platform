@@ -46,6 +46,10 @@ def test_target(body: TargetTestIn, user: User = Depends(require_role(Role.analy
     target = body.target
     prompt = body.prompt or DEFAULT_PROMPT
 
+    # Browser (web chat UI) target: drive the Playwright bridge once.
+    if target.type == "browser":
+        return _test_browser(target, prompt)
+
     # Provider targets: we can only confirm the API key is present here.
     if target.type in ("openai", "anthropic"):
         missing = missing_keys(target)
@@ -75,6 +79,43 @@ def test_target(body: TargetTestIn, user: User = Depends(require_role(Role.analy
                 f"Check the 'Response JSON path' against the raw response below.")
     result.pop("json", None)
     return result
+
+
+def _test_browser(target: Target, prompt: str) -> dict:
+    """Run the Playwright bridge once (node subprocess) to validate selectors."""
+    import json
+    import subprocess
+
+    from ..config import get_settings
+
+    b = target.browser
+    bridge = get_settings().engine_dir / "providers" / "automated_chat_bridge.js"
+    if not bridge.exists():
+        return {"ok": False, "kind": "browser", "error": "browser bridge is not installed in this image"}
+    import os
+
+    env = {
+        **os.environ,  # keep PLAYWRIGHT_BROWSERS_PATH, NODE_PATH, PATH, etc.
+        "CHAT_URL": b.url,
+        "CHAT_INPUT_SELECTOR": b.input_selector,
+        "CHAT_SEND_SELECTOR": b.send_button_selector,
+        "CHAT_RESPONSE_SELECTOR": b.response_bubble_selector,
+        "CHAT_STREAMING_SELECTOR": b.streaming_indicator_selector,
+        "CHAT_HARD_TIMEOUT_MS": str(b.hard_timeout_ms),
+        "CHAT_STABLE_MS": str(b.stable_ms),
+        "CHAT_HEADLESS": "true",
+    }
+    try:
+        proc = subprocess.run(["node", str(bridge), prompt], env=env, capture_output=True,
+                              text=True, timeout=b.hard_timeout_ms / 1000 + 25)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "kind": "browser", "error": "Timed out driving the chat UI."}
+    out = (proc.stdout or "").strip()
+    if proc.returncode == 0 and out and not out.startswith("[BRIDGE ERROR]"):
+        return {"ok": True, "kind": "browser", "reply": out[:1000]}
+    return {"ok": False, "kind": "browser",
+            "error": out or (proc.stderr or "").strip()[-400:] or "bridge failed",
+            "raw": (proc.stderr or "")[-1500:]}
 
 
 def _do_request(method: str, url: str, headers: dict, body: Any) -> dict:

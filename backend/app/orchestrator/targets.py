@@ -22,13 +22,27 @@ class HttpTarget(BaseModel):
     response_path: str = "reply"
 
 
+class BrowserTarget(BaseModel):
+    """A model reachable only through a web chat UI, driven by the Playwright
+    bridge (engine/providers/automated_chat_bridge.js)."""
+
+    url: str
+    input_selector: str = "textarea[data-testid='chat-input']"
+    send_button_selector: str = "button[data-testid='send-button']"
+    response_bubble_selector: str = "[data-message-author-role='assistant']"
+    streaming_indicator_selector: str = "button[aria-label='Stop generating']"
+    hard_timeout_ms: int = 30000
+    stable_ms: int = 1200
+
+
 class Target(BaseModel):
-    type: Literal["openai", "anthropic", "ollama", "http", "demo"]
+    type: Literal["openai", "anthropic", "ollama", "http", "demo", "browser"]
     label: str = ""
     model: str = ""
     base_url: Optional[str] = None  # OpenAI-compatible gateways, Ollama host
     system_prompt: str = ""
     http: Optional[HttpTarget] = None
+    browser: Optional[BrowserTarget] = None
 
     @model_validator(mode="after")
     def _check(self) -> "Target":
@@ -39,7 +53,9 @@ class Target(BaseModel):
                                    body={"message": "{{prompt}}"}, response_path="reply")
         if self.type == "http" and not self.http:
             raise ValueError("http target needs http settings")
-        if self.type not in ("http", "demo") and not self.model:
+        if self.type == "browser" and not self.browser:
+            raise ValueError("browser target needs browser settings")
+        if self.type not in ("http", "demo", "browser") and not self.model:
             raise ValueError("model is required")
         return self
 
@@ -53,11 +69,13 @@ class Target(BaseModel):
             return self.label
         if self.type == "demo":
             return "Built-in demo target"
+        if self.type == "browser" and self.browser:
+            return f"browser: {self.browser.url}"
         return self.http.url if self.is_http_like and self.http else f"{self.type}:{self.model}"
 
 
 def missing_keys(target: Target) -> list[str]:
-    if target.type == "demo":
+    if target.type in ("demo", "browser"):
         return []
     env = KEY_ENV.get(target.type)
     return [env] if env and not os.getenv(env) else []
@@ -71,6 +89,23 @@ def _js_path(path: str) -> str:
 def promptfoo_provider(target: Target) -> dict[str, Any]:
     """Provider entry for promptfooconfig.yaml `targets:`."""
     config: dict[str, Any] = {}
+    if target.type == "browser":
+        from ..config import get_settings
+        b = target.browser
+        assert b
+        bridge = get_settings().engine_dir / "providers" / "automated_chat_bridge.js"
+        return {
+            "id": f"file://{bridge}",
+            "label": target.display,
+            "config": {
+                "url": b.url, "headless": True,
+                "inputSelector": b.input_selector,
+                "sendButtonSelector": b.send_button_selector,
+                "responseBubbleSelector": b.response_bubble_selector,
+                "streamingIndicatorSelector": b.streaming_indicator_selector,
+                "hardTimeoutMs": b.hard_timeout_ms, "stableMs": b.stable_ms,
+            },
+        }
     if target.type == "openai":
         pid = f"openai:chat:{target.model}"
         if target.base_url:
