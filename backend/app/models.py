@@ -156,3 +156,15 @@ class AuditLog(SQLModel, table=True):
     ip: str = ""
     prev_hash: str = ""
     row_hash: str = Field(default="", index=True)
+
+
+class BrowserSession(SQLModel, table=True):
+    """A saved, authenticated browser session (Playwright storageState) for a web
+    chat UI target. The session JSON (cookies/localStorage) is encrypted at rest."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    data_enc: str = Field(default="", sa_column=Column(Text))  # Fernet-encrypted storageState JSON
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)

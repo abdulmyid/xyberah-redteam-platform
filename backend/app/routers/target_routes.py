@@ -4,17 +4,64 @@ The test runs server-side (like the real scan) so it validates the actual path:
 reachability, HTTP method, headers/auth key, request body template, and whether
 the configured response path extracts the model's reply.
 """
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlmodel import Session, select
 
-from ..auth import require_role
-from ..models import Role, User
+from ..auth import company_scope, require_role
+from ..db import get_session
+from ..models import BrowserSession, Role, User
+from ..orchestrator import browser_session
 from ..orchestrator.targets import Target, missing_keys
 from ..schemas import TargetTestIn
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
+
+MAX_SESSION = 2 * 1024 * 1024  # 2 MB storageState
+
+
+@router.post("/browser-session", status_code=201)
+def upload_browser_session(name: str = "", file: UploadFile = File(...),
+                           user: User = Depends(require_role(Role.analyst)),
+                           session: Session = Depends(get_session)):
+    """Upload a Playwright storageState JSON (captured with `playwright codegen
+    --save-storage`). Stored encrypted and reusable as a saved session."""
+    raw = file.file.read(MAX_SESSION)
+    try:
+        import json as _json
+        _json.loads(raw)
+    except Exception:
+        raise HTTPException(422, "Not valid JSON — upload the storageState file from `playwright codegen --save-storage`")
+    row = browser_session.create_session(user.company_id, name or (file.filename or "session"),
+                                          raw.decode("utf-8", "replace"), user.id)
+    return {"id": row.id, "name": row.name, "created_at": row.created_at}
+
+
+@router.get("/browser-sessions")
+def list_browser_sessions(user: User = Depends(require_role(Role.analyst)),
+                          session: Session = Depends(get_session)):
+    scope = company_scope(user)
+    q = select(BrowserSession).order_by(BrowserSession.created_at.desc())
+    if scope is not None:
+        q = q.where(BrowserSession.company_id == scope)
+    return [{"id": r.id, "name": r.name, "created_at": r.created_at} for r in session.exec(q).all()]
+
+
+@router.delete("/browser-sessions/{session_id}")
+def delete_browser_session(session_id: int, user: User = Depends(require_role(Role.analyst)),
+                           session: Session = Depends(get_session)):
+    row = session.get(BrowserSession, session_id)
+    if not row:
+        raise HTTPException(404, "No such session")
+    if user.role != Role.global_admin and row.company_id != user.company_id:
+        raise HTTPException(404, "No such session")
+    session.delete(row)
+    session.commit()
+    return {"ok": True}
 
 DEFAULT_PROMPT = "Hello! Reply with a short confirmation that you are working."
 
@@ -48,7 +95,7 @@ def test_target(body: TargetTestIn, user: User = Depends(require_role(Role.analy
 
     # Browser (web chat UI) target: drive the Playwright bridge once.
     if target.type == "browser":
-        return _test_browser(target, prompt)
+        return _test_browser(target, prompt, user.company_id)
 
     # Provider targets: we can only confirm the API key is present here.
     if target.type in ("openai", "anthropic"):
@@ -81,9 +128,10 @@ def test_target(body: TargetTestIn, user: User = Depends(require_role(Role.analy
     return result
 
 
-def _test_browser(target: Target, prompt: str) -> dict:
+def _test_browser(target: Target, prompt: str, company_id) -> dict:
     """Run the Playwright bridge once (node subprocess) to validate selectors."""
     import json
+    import os
     import subprocess
 
     from ..config import get_settings
@@ -92,26 +140,32 @@ def _test_browser(target: Target, prompt: str) -> dict:
     bridge = get_settings().engine_dir / "providers" / "automated_chat_bridge.js"
     if not bridge.exists():
         return {"ok": False, "kind": "browser", "error": "browser bridge is not installed in this image"}
-    import os
 
-    env = {
-        **os.environ,  # keep PLAYWRIGHT_BROWSERS_PATH, NODE_PATH, PATH, etc.
-        "CHAT_URL": b.url,
-        "CHAT_INPUT_SELECTOR": b.input_selector,
-        "CHAT_SEND_SELECTOR": b.send_button_selector,
-        "CHAT_RESPONSE_SELECTOR": b.response_bubble_selector,
-        "CHAT_STREAMING_SELECTOR": b.streaming_indicator_selector,
-        "CHAT_NEWCHAT_SELECTOR": b.new_chat_selector,
-        "CHAT_SETUP_STEPS": json.dumps([s.model_dump() for s in b.setup_steps]),
-        "CHAT_HARD_TIMEOUT_MS": str(b.hard_timeout_ms),
-        "CHAT_STABLE_MS": str(b.stable_ms),
-        "CHAT_HEADLESS": "true",
-    }
-    try:
-        proc = subprocess.run(["node", str(bridge), prompt], env=env, capture_output=True,
-                              text=True, timeout=b.hard_timeout_ms / 1000 + 25)
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "kind": "browser", "error": "Timed out driving the chat UI."}
+    with tempfile.TemporaryDirectory() as tmp:
+        session_path = ""
+        if b.session_id:
+            session_path = browser_session.materialize(b.session_id, company_id, Path(tmp)) or ""
+            if not session_path:
+                return {"ok": False, "kind": "browser", "error": "saved session not found"}
+        env = {
+            **os.environ,  # keep PLAYWRIGHT_BROWSERS_PATH, NODE_PATH, PATH, etc.
+            "CHAT_URL": b.url,
+            "CHAT_INPUT_SELECTOR": b.input_selector,
+            "CHAT_SEND_SELECTOR": b.send_button_selector,
+            "CHAT_RESPONSE_SELECTOR": b.response_bubble_selector,
+            "CHAT_STREAMING_SELECTOR": b.streaming_indicator_selector,
+            "CHAT_NEWCHAT_SELECTOR": b.new_chat_selector,
+            "CHAT_SETUP_STEPS": json.dumps([s.model_dump() for s in b.setup_steps]),
+            "CHAT_STORAGE_STATE": session_path,
+            "CHAT_HARD_TIMEOUT_MS": str(b.hard_timeout_ms),
+            "CHAT_STABLE_MS": str(b.stable_ms),
+            "CHAT_HEADLESS": "true",
+        }
+        try:
+            proc = subprocess.run(["node", str(bridge), prompt], env=env, capture_output=True,
+                                  text=True, timeout=b.hard_timeout_ms / 1000 + 25)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "kind": "browser", "error": "Timed out driving the chat UI."}
     out = (proc.stdout or "").strip()
     if proc.returncode == 0 and out and not out.startswith("[BRIDGE ERROR]"):
         return {"ok": True, "kind": "browser", "reply": out[:1000]}

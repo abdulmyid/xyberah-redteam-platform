@@ -154,11 +154,20 @@ def _run_stage(campaign_id: int, tool: str, target: Target, tools: dict[str, Any
 # ---- Promptfoo (native plugins) ------------------------------------------- #
 def _run_promptfoo(campaign_id, target, tools, out: Path, stop) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
+    # Materialize a saved browser session (authenticated storageState), if any.
+    session_path = ""
+    if target.type == "browser" and target.browser and target.browser.session_id:
+        from . import browser_session
+        with Session(engine) as s:
+            c = s.get(Campaign, campaign_id)
+            company_id = c.company_id if c else None
+        session_path = browser_session.materialize(target.browser.session_id, company_id, out) or ""
     cfg = promptfoo_config.build_config(
         campaign_name=f"campaign-{campaign_id}", target=target,
         purpose=tools.get("purpose", ""), plugins=tools.get("promptfoo_plugins", []),
         strategies=tools.get("promptfoo_strategies", ["basic"]),
         num_tests=int(tools.get("num_tests", 5)), workdir=out,
+        browser_session_path=session_path,
     )
     results = out / "results.json"
     env = {**os.environ, **target_env(target), "PROMPTFOO_DISABLE_TELEMETRY": "1"}

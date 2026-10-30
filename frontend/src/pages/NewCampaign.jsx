@@ -132,9 +132,25 @@ export default function NewCampaign() {
     send_button_selector: "button[data-testid='send-button']",
     response_bubble_selector: "[data-message-author-role='assistant']",
     streaming_indicator_selector: "button[aria-label='Stop generating']",
-    new_chat_selector: "", setup_steps: [],
+    new_chat_selector: "", setup_steps: [], session_id: null,
   });
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [sessMsg, setSessMsg] = useState("");
+
+  useEffect(() => { api.get("/api/targets/browser-sessions").then(setSessions).catch(() => {}); }, []);
+
+  async function uploadSession(file) {
+    setSessMsg("Uploading…");
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const r = await api.upload(`/api/targets/browser-session?name=${encodeURIComponent(file.name)}`, fd);
+      const list = await api.get("/api/targets/browser-sessions");
+      setSessions(list);
+      setBrowser((b) => ({ ...b, session_id: r.id }));
+      setSessMsg(`Saved session "${r.name}" and selected it.`);
+    } catch (e) { setSessMsg(e.message); }
+  }
 
   const STEP_ACTIONS = ["goto", "fill", "type", "click", "press", "waitForSelector", "waitForURL", "sleep"];
   const addStep = () => setBrowser((b) => ({ ...b, setup_steps: [...b.setup_steps, { action: "goto", selector: "", value: "", url: "", ms: 0 }] }));
@@ -277,6 +293,30 @@ export default function NewCampaign() {
             <div><label className="label">Streaming indicator selector (optional)</label>
               <input className="input font-mono text-xs" value={browser.streaming_indicator_selector}
                      onChange={(e) => setBrowser({ ...browser, streaming_indicator_selector: e.target.value })} /></div>
+            {/* ---- Saved authenticated session (recommended for SSO/MFA) ---- */}
+            <div className="sm:col-span-2 border-t pt-3">
+              <label className="label">Saved browser session (recommended for login)</label>
+              <p className="text-xs text-slate-500 mb-2">
+                Record a real, logged-in session on your machine and reuse it — handles SSO, MFA and
+                anything you can do by hand. Run:
+                <code className="block mt-1 bg-slate-100 px-2 py-1 rounded font-mono">npx playwright codegen --save-storage=auth.json {browser.url || "https://your-app/chat"}</code>
+                log in, close the window, then upload <code>auth.json</code> here.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="input w-auto" value={browser.session_id || ""}
+                        onChange={(e) => setBrowser({ ...browser, session_id: e.target.value ? +e.target.value : null })}>
+                  <option value="">No saved session</option>
+                  {sessions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <label className="btn-ghost cursor-pointer">
+                  Upload session…
+                  <input type="file" accept=".json" className="hidden"
+                         onChange={(e) => e.target.files[0] && uploadSession(e.target.files[0])} />
+                </label>
+                {sessMsg && <span className="text-xs text-slate-600">{sessMsg}</span>}
+              </div>
+            </div>
+
             {/* ---- Login macro (Burp-style recorded login) ---- */}
             <div className="sm:col-span-2 border-t pt-3">
               <label className="flex items-center gap-2 text-sm font-medium">

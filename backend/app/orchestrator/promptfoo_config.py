@@ -16,11 +16,14 @@ def build_config(
     strategies: list[str],
     num_tests: int,
     workdir: Path,
+    browser_session_path: str = "",
 ) -> Path:
     s = get_settings()
     provider = promptfoo_provider(target)
     if target.system_prompt:
         provider.setdefault("config", {})["instructions"] = target.system_prompt
+    if target.type == "browser" and browser_session_path:
+        provider.setdefault("config", {})["storageStatePath"] = browser_session_path
 
     redteam: dict[str, Any] = {
         "purpose": purpose or f"Target under test: {target.display}",

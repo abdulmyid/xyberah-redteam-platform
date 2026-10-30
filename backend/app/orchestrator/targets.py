@@ -43,6 +43,7 @@ class BrowserTarget(BaseModel):
     streaming_indicator_selector: str = "button[aria-label='Stop generating']"
     new_chat_selector: str = ""
     setup_steps: list[BrowserStep] = []  # login macro, runs once
+    session_id: Optional[int] = None     # saved authenticated session (storageState)
     hard_timeout_ms: int = 30000
     stable_ms: int = 1200
 
