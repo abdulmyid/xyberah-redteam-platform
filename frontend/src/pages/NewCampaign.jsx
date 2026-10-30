@@ -132,7 +132,14 @@ export default function NewCampaign() {
     send_button_selector: "button[data-testid='send-button']",
     response_bubble_selector: "[data-message-author-role='assistant']",
     streaming_indicator_selector: "button[aria-label='Stop generating']",
+    new_chat_selector: "", setup_steps: [],
   });
+  const [needsLogin, setNeedsLogin] = useState(false);
+
+  const STEP_ACTIONS = ["goto", "fill", "type", "click", "press", "waitForSelector", "waitForURL", "sleep"];
+  const addStep = () => setBrowser((b) => ({ ...b, setup_steps: [...b.setup_steps, { action: "goto", selector: "", value: "", url: "", ms: 0 }] }));
+  const setStep = (i, patch) => setBrowser((b) => ({ ...b, setup_steps: b.setup_steps.map((s, j) => (j === i ? { ...s, ...patch } : s)) }));
+  const delStep = (i) => setBrowser((b) => ({ ...b, setup_steps: b.setup_steps.filter((_, j) => j !== i) }));
 
   function buildTarget() {
     const t = { ...target };
@@ -270,11 +277,62 @@ export default function NewCampaign() {
             <div><label className="label">Streaming indicator selector (optional)</label>
               <input className="input font-mono text-xs" value={browser.streaming_indicator_selector}
                      onChange={(e) => setBrowser({ ...browser, streaming_indicator_selector: e.target.value })} /></div>
+            {/* ---- Login macro (Burp-style recorded login) ---- */}
+            <div className="sm:col-span-2 border-t pt-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={needsLogin}
+                       onChange={(e) => { setNeedsLogin(e.target.checked); if (e.target.checked && browser.setup_steps.length === 0) addStep(); }} />
+                This chat UI requires login (record a login sequence)
+              </label>
+              {needsLogin && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-slate-500">
+                    Steps run once to log in; every prompt then reuses the session. Use
+                    <code className="mx-1">{"{{secret.NAME}}"}</code>for passwords and set <code>NAME</code> as an
+                    environment variable on the backend — secrets are never stored.
+                  </p>
+                  {browser.setup_steps.map((s, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2 bg-white rounded border border-slate-200 p-2">
+                      <span className="text-xs text-slate-400 w-4">{i + 1}</span>
+                      <select className="input w-auto py-1" value={s.action} onChange={(e) => setStep(i, { action: e.target.value })}>
+                        {STEP_ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                      {["goto", "waitForURL"].includes(s.action) && (
+                        <input className="input flex-1 min-w-[180px] py-1 font-mono text-xs" placeholder="https://app/login"
+                               value={s.url} onChange={(e) => setStep(i, { url: e.target.value })} />
+                      )}
+                      {["fill", "type", "click", "press", "waitForSelector"].includes(s.action) && (
+                        <input className="input flex-1 min-w-[160px] py-1 font-mono text-xs" placeholder="CSS selector, e.g. #email"
+                               value={s.selector} onChange={(e) => setStep(i, { selector: e.target.value })} />
+                      )}
+                      {["fill", "type", "press"].includes(s.action) && (
+                        <input className="input flex-1 min-w-[140px] py-1 font-mono text-xs"
+                               placeholder={s.action === "press" ? "key (e.g. Enter)" : "value or {{secret.CHAT_PASS}}"}
+                               value={s.value} onChange={(e) => setStep(i, { value: e.target.value })} />
+                      )}
+                      {s.action === "sleep" && (
+                        <input className="input w-28 py-1" type="number" placeholder="ms" value={s.ms || ""}
+                               onChange={(e) => setStep(i, { ms: +e.target.value })} />
+                      )}
+                      <button type="button" className="text-red-500 text-xs" onClick={() => delStep(i)}>remove</button>
+                    </div>
+                  ))}
+                  <button type="button" className="btn-ghost py-1 text-xs" onClick={addStep}>+ Add step</button>
+                  <div className="pt-1">
+                    <label className="label">New-chat selector (optional — reset the conversation per prompt)</label>
+                    <input className="input font-mono text-xs" value={browser.new_chat_selector}
+                           placeholder="button[aria-label='New chat']"
+                           onChange={(e) => setBrowser({ ...browser, new_chat_selector: e.target.value })} />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="sm:col-span-2 flex items-center gap-3">
               <button type="button" className="btn-ghost" onClick={testConnection} disabled={testing || !browser.url}>
                 {testing ? "Testing…" : "Test connection"}
               </button>
-              <span className="text-xs text-slate-500">Drives the chat UI once with a sample prompt (can take ~10–20s).</span>
+              <span className="text-xs text-slate-500">Drives the chat UI once (runs the login macro first); can take ~10–30s.</span>
             </div>
             {testResult && (
               <div className={`sm:col-span-2 rounded-lg px-3 py-2 text-sm ${testResult.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>

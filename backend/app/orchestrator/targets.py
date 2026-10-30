@@ -22,6 +22,16 @@ class HttpTarget(BaseModel):
     response_path: str = "reply"
 
 
+class BrowserStep(BaseModel):
+    """One action in a login/setup macro (Burp-style recorded login)."""
+
+    action: str  # goto | fill | type | click | press | waitForSelector | waitForURL | waitForLoadState | sleep
+    selector: str = ""
+    value: str = ""   # may reference {{secret.NAME}} — resolved from backend env, never stored
+    url: str = ""
+    ms: int = 0
+
+
 class BrowserTarget(BaseModel):
     """A model reachable only through a web chat UI, driven by the Playwright
     bridge (engine/providers/automated_chat_bridge.js)."""
@@ -31,6 +41,8 @@ class BrowserTarget(BaseModel):
     send_button_selector: str = "button[data-testid='send-button']"
     response_bubble_selector: str = "[data-message-author-role='assistant']"
     streaming_indicator_selector: str = "button[aria-label='Stop generating']"
+    new_chat_selector: str = ""
+    setup_steps: list[BrowserStep] = []  # login macro, runs once
     hard_timeout_ms: int = 30000
     stable_ms: int = 1200
 
@@ -103,6 +115,8 @@ def promptfoo_provider(target: Target) -> dict[str, Any]:
                 "sendButtonSelector": b.send_button_selector,
                 "responseBubbleSelector": b.response_bubble_selector,
                 "streamingIndicatorSelector": b.streaming_indicator_selector,
+                "newChatSelector": b.new_chat_selector,
+                "setupSteps": [s.model_dump() for s in b.setup_steps],
                 "hardTimeoutMs": b.hard_timeout_ms, "stableMs": b.stable_ms,
             },
         }

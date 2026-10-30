@@ -101,6 +101,8 @@ def _test_browser(target: Target, prompt: str) -> dict:
         "CHAT_SEND_SELECTOR": b.send_button_selector,
         "CHAT_RESPONSE_SELECTOR": b.response_bubble_selector,
         "CHAT_STREAMING_SELECTOR": b.streaming_indicator_selector,
+        "CHAT_NEWCHAT_SELECTOR": b.new_chat_selector,
+        "CHAT_SETUP_STEPS": json.dumps([s.model_dump() for s in b.setup_steps]),
         "CHAT_HARD_TIMEOUT_MS": str(b.hard_timeout_ms),
         "CHAT_STABLE_MS": str(b.stable_ms),
         "CHAT_HEADLESS": "true",

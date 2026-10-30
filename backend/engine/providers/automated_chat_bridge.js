@@ -9,19 +9,30 @@
  *   1) As a Promptfoo custom provider (the main integration):
  *        providers:
  *          - id: file://automated_chat_bridge.js
- *            config: { url: "...", inputSelector: "...", ... }
- *      Promptfoo calls `callApi(prompt)` once per test; we drive the browser and
- *      return `{ output }` (or `{ error }`) into the grading engine.
+ *            config: { url: "...", inputSelector: "...", setupSteps: [...] }
  *
- *   2) As a CLI script (handy for debugging a selector set):
+ *   2) As a CLI script (handy for debugging selectors / a login macro):
  *        node automated_chat_bridge.js "What is the capital of France?"
  *        PROMPTFOO_PROMPT="hi" node automated_chat_bridge.js
- *      Prints the scraped reply to stdout, or "[BRIDGE ERROR] ..." on failure.
  *
- * It launches Chromium ONCE and reuses it, but uses a FRESH browser context for
- * every prompt so each test is an isolated, stateless conversation (important
- * for red-teaming). Everything is wrapped so a selector/timeouts failure returns
- * a clean error string instead of crashing the pipeline.
+ * AUTHENTICATED TARGETS (Burp-style login macro):
+ *   Provide `setupSteps`: an ordered list of browser actions that LOG IN and reach
+ *   the chat. They run ONCE in a shared context; every prompt then replays against
+ *   that logged-in session. Passwords are referenced as {{secret.NAME}} and read
+ *   from environment variables at run time — never stored.
+ *
+ *     setupSteps:
+ *       - { action: goto,            url: "https://app/login" }
+ *       - { action: fill,            selector: "#email",    value: "{{secret.CHAT_USER}}" }
+ *       - { action: fill,            selector: "#password", value: "{{secret.CHAT_PASS}}" }
+ *       - { action: click,           selector: "button[type=submit]" }
+ *       - { action: waitForSelector, selector: "textarea[name=prompt]" }
+ *
+ *   Supported actions: goto, fill, type, click, press, waitForSelector,
+ *   waitForURL, waitForLoadState, sleep.
+ *
+ * Everything is wrapped so a selector/timeout failure returns a clean error string
+ * instead of crashing the pipeline.
  * ----------------------------------------------------------------------------
  */
 
@@ -30,77 +41,120 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 
+function parseJsonEnv(s) { if (!s) return null; try { return JSON.parse(s); } catch { return null; } }
+
 // ===========================================================================
-// 1. DOM SELECTORS — update these placeholders to match YOUR chat UI.
-//    Find them with devtools (right-click the element → Inspect). Prefer stable
-//    attributes (data-testid, aria-label, role) over hashed CSS class names.
-//    Every value here can also be overridden per-provider in promptfooconfig.yaml
-//    under `config:`, or via the matching ENV var (shown in brackets).
+// DOM SELECTORS & behaviour — overridable per-provider in config: or via ENV.
 // ===========================================================================
 const DEFAULTS = {
-  // [CHAT_URL] The chat page URL.
   url: process.env.CHAT_URL || 'http://localhost:3000/chat',
-
-  // [CHAT_INPUT_SELECTOR] The message input box (a <textarea>, <input>, or a
-  // contenteditable <div>). Example for ChatGPT-like UIs: "#prompt-textarea".
   inputSelector: process.env.CHAT_INPUT_SELECTOR || "textarea[data-testid='chat-input']",
-
-  // [CHAT_SEND_SELECTOR] The "send" button. Leave empty ("") to submit with Enter.
   sendButtonSelector: process.env.CHAT_SEND_SELECTOR || "button[data-testid='send-button']",
-
-  // [CHAT_RESPONSE_SELECTOR] The ASSISTANT message bubbles ONLY (not the user's).
-  // The LAST match is treated as the current reply. Make this assistant-specific,
-  // e.g. "[data-message-author-role='assistant']" or ".message.assistant .content".
   responseBubbleSelector: process.env.CHAT_RESPONSE_SELECTOR || "[data-message-author-role='assistant']",
-
-  // [CHAT_STREAMING_SELECTOR] Optional. An element present ONLY while the model is
-  // still generating (e.g. a "Stop generating" button or a typing indicator).
-  // If set, we also wait for it to disappear. Leave "" to rely on text stability.
   streamingIndicatorSelector: process.env.CHAT_STREAMING_SELECTOR || "button[aria-label='Stop generating']",
 
-  // [CHAT_NEWCHAT_SELECTOR] Optional. If your UI keeps history, a "New chat" button
-  // clicked before each prompt. Usually unnecessary (we use a fresh context).
+  // Login macro (runs once) + optional "start a new conversation" steps (per prompt).
+  setupSteps: parseJsonEnv(process.env.CHAT_SETUP_STEPS) || [],
+  newChatSteps: parseJsonEnv(process.env.CHAT_NEWCHAT_STEPS) || [],
   newChatSelector: process.env.CHAT_NEWCHAT_SELECTOR || '',
 
-  // [CHAT_STORAGE_STATE] Optional path to a Playwright storageState JSON for auth.
-  // Create once with:  npx playwright codegen --save-storage=auth.json <url>
+  // Optional pre-captured authenticated session (Playwright storageState JSON).
   storageStatePath: process.env.CHAT_STORAGE_STATE || '',
 
-  // Behaviour knobs
   headless: (process.env.CHAT_HEADLESS || 'true') !== 'false',
-  submitMethod: process.env.CHAT_SUBMIT_METHOD || 'auto', // 'auto' | 'click' | 'enter'
-  typeDelayMs: parseInt(process.env.CHAT_TYPE_DELAY_MS || '0', 10), // natural typing; 0 = instant fill
+  submitMethod: process.env.CHAT_SUBMIT_METHOD || 'auto', // auto | click | enter
+  typeDelayMs: parseInt(process.env.CHAT_TYPE_DELAY_MS || '0', 10),
   navigationTimeoutMs: parseInt(process.env.CHAT_NAV_TIMEOUT_MS || '30000', 10),
-  hardTimeoutMs: parseInt(process.env.CHAT_HARD_TIMEOUT_MS || '30000', 10), // max wait for a reply
-  stableMs: parseInt(process.env.CHAT_STABLE_MS || '1200', 10), // reply "done" after text is unchanged this long
+  hardTimeoutMs: parseInt(process.env.CHAT_HARD_TIMEOUT_MS || '30000', 10),
+  stableMs: parseInt(process.env.CHAT_STABLE_MS || '1200', 10),
   pollMs: 300,
 };
 
 const log = (...a) => console.error(`[bridge ${new Date().toISOString()}]`, ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Replace {{secret.NAME}} / {{env.NAME}} with process.env.NAME (never logged).
+function resolveSecrets(str) {
+  if (typeof str !== 'string') return str;
+  return str.replace(/\{\{\s*(?:secret|env)\.([A-Z0-9_]+)\s*\}\}/gi, (_, name) => {
+    const v = process.env[name];
+    if (v === undefined) { log(`WARNING: secret/env "${name}" is not set`); return ''; }
+    return v;
+  });
+}
+
 // ---------------------------------------------------------------------------
-// Shared browser (launched once, reused across prompts).
+// Shared browser (launched once) and shared AUTHENTICATED context (login once).
 // ---------------------------------------------------------------------------
 let _browserPromise = null;
 function getBrowser(headless) {
   if (!_browserPromise) {
     log('launching chromium (headless=' + headless + ')');
-    _browserPromise = chromium.launch({
-      headless,
-      args: ['--no-sandbox', '--disable-dev-shm-usage'], // CI/container friendly
-    });
+    _browserPromise = chromium.launch({ headless, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   }
   return _browserPromise;
 }
 
-async function closeBrowser() {
-  if (_browserPromise) {
-    try { (await _browserPromise).close(); } catch (_) { /* ignore */ }
-    _browserPromise = null;
+let _authCtxPromise = null;
+function getAuthContext(c) {
+  if (!_authCtxPromise) {
+    _authCtxPromise = (async () => {
+      const browser = await getBrowser(c.headless);
+      const ctx = await browser.newContext(storageOpts(c));
+      if (c.setupSteps && c.setupSteps.length) {
+        log(`running login macro (${c.setupSteps.length} steps)`);
+        const page = await ctx.newPage();
+        page.setDefaultTimeout(c.navigationTimeoutMs);
+        await runSteps(page, c.setupSteps, c);
+        await page.close();
+        log('login macro complete');
+      }
+      return ctx;
+    })();
   }
+  return _authCtxPromise;
+}
+
+function storageOpts(c) {
+  return (c.storageStatePath && fs.existsSync(c.storageStatePath)) ? { storageState: c.storageStatePath } : {};
+}
+
+async function closeBrowser() {
+  if (_authCtxPromise) { try { (await _authCtxPromise).close(); } catch (_) {} _authCtxPromise = null; }
+  if (_browserPromise) { try { (await _browserPromise).close(); } catch (_) {} _browserPromise = null; }
 }
 ['SIGINT', 'SIGTERM', 'exit'].forEach((sig) => process.on(sig, () => { closeBrowser(); }));
+
+// ---------------------------------------------------------------------------
+// Run an ordered list of actions (login macro / new-chat steps).
+// ---------------------------------------------------------------------------
+async function runSteps(page, steps, c) {
+  for (const raw of steps) {
+    const step = raw || {};
+    const action = String(step.action || '').toLowerCase();
+    const sel = step.selector;
+    const val = step.value != null ? resolveSecrets(String(step.value)) : undefined;
+    const url = step.url ? resolveSecrets(step.url) : undefined;
+    const to = step.timeout || c.navigationTimeoutMs;
+    try {
+      switch (action) {
+        case 'goto': await page.goto(url, { waitUntil: 'domcontentloaded', timeout: to }); break;
+        case 'fill': await page.locator(sel).first().fill(val ?? ''); break;
+        case 'type': await page.locator(sel).first().pressSequentially(val ?? '', { delay: c.typeDelayMs || 20 }); break;
+        case 'click': await page.locator(sel).first().click({ timeout: to }); break;
+        case 'press': await page.locator(sel).first().press(val || 'Enter'); break;
+        case 'waitforselector': case 'wait':
+          await page.locator(sel).first().waitFor({ state: 'visible', timeout: to }); break;
+        case 'waitforurl': await page.waitForURL(url || val, { timeout: to }); break;
+        case 'waitforloadstate': await page.waitForLoadState(val || 'networkidle', { timeout: to }); break;
+        case 'sleep': case 'waitfortimeout': await sleep(step.ms || 1000); break;
+        default: log(`unknown step action: "${step.action}" (skipped)`);
+      }
+    } catch (e) {
+      throw new Error(`login/setup step failed [${action}${sel ? ' ' + sel : ''}]: ${e.message}`);
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Core: send ONE prompt to the chat UI and return the final reply text.
@@ -108,27 +162,30 @@ async function closeBrowser() {
 // ---------------------------------------------------------------------------
 async function runPrompt(prompt, cfg) {
   const c = { ...DEFAULTS, ...(cfg || {}) };
-  let context;
+  const authed = (c.setupSteps && c.setupSteps.length) || storageOpts(c).storageState;
+  let context, page, ownContext = false;
   try {
-    const browser = await getBrowser(c.headless);
-    const ctxOpts = {};
-    if (c.storageStatePath && fs.existsSync(c.storageStatePath)) {
-      ctxOpts.storageState = c.storageStatePath; // reuse an authenticated session
+    if (authed) {
+      context = await getAuthContext(c);
+    } else {
+      const browser = await getBrowser(c.headless);
+      context = await browser.newContext(storageOpts(c));
+      ownContext = true;
     }
-    context = await browser.newContext(ctxOpts);
-    const page = await context.newPage();
+    page = await context.newPage();
     page.setDefaultTimeout(c.navigationTimeoutMs);
 
-    // --- navigate ---------------------------------------------------------
+    // Navigate to the chat (authenticated cookies carry over from the macro).
     await page.goto(c.url, { waitUntil: 'domcontentloaded', timeout: c.navigationTimeoutMs });
 
-    // optional: start a fresh conversation
-    if (c.newChatSelector) {
+    // Start a fresh conversation if configured.
+    if (c.newChatSteps && c.newChatSteps.length) {
+      await runSteps(page, c.newChatSteps, c);
+    } else if (c.newChatSelector) {
       const nc = page.locator(c.newChatSelector);
-      if (await nc.count()) { await nc.first().click().catch(() => {}); }
+      if (await nc.count()) await nc.first().click().catch(() => {});
     }
 
-    // --- wait for the input to be interactive -----------------------------
     const input = page.locator(c.inputSelector).first();
     try {
       await input.waitFor({ state: 'visible', timeout: c.navigationTimeoutMs });
@@ -136,34 +193,24 @@ async function runPrompt(prompt, cfg) {
       return fail(`input not found/visible: selector "${c.inputSelector}" (${e.message})`);
     }
 
-    // baseline count of assistant bubbles BEFORE we send
     const bubbles = page.locator(c.responseBubbleSelector);
     const baseline = await bubbles.count();
 
-    // --- type the prompt --------------------------------------------------
     await input.click({ timeout: 5000 }).catch(() => {});
-    if (c.typeDelayMs > 0) {
-      await input.pressSequentially(prompt, { delay: c.typeDelayMs }); // natural typing
-    } else {
-      await input.fill(prompt); // works for input/textarea AND contenteditable
-    }
+    if (c.typeDelayMs > 0) await input.pressSequentially(prompt, { delay: c.typeDelayMs });
+    else await input.fill(prompt);
 
-    // --- trigger send -----------------------------------------------------
-    const method = resolveSubmit(c);
+    const method = c.submitMethod === 'click' ? 'click'
+      : c.submitMethod === 'enter' ? 'enter'
+        : (c.sendButtonSelector ? 'click' : 'enter');
     if (method === 'click') {
       const btn = page.locator(c.sendButtonSelector).first();
-      try {
-        await btn.waitFor({ state: 'visible', timeout: 5000 });
-        await btn.click();
-      } catch (e) {
-        log(`send button "${c.sendButtonSelector}" not clickable, falling back to Enter (${e.message})`);
-        await input.press('Enter');
-      }
+      try { await btn.waitFor({ state: 'visible', timeout: 5000 }); await btn.click(); }
+      catch (e) { log(`send button not clickable, using Enter (${e.message})`); await input.press('Enter'); }
     } else {
       await input.press('Enter');
     }
 
-    // --- wait for a NEW assistant bubble to appear ------------------------
     const deadline = Date.now() + c.hardTimeoutMs;
     let appeared = false;
     while (Date.now() < deadline) {
@@ -171,60 +218,38 @@ async function runPrompt(prompt, cfg) {
       await sleep(c.pollMs);
     }
     if (!appeared) {
-      return fail(`no new assistant bubble matched "${c.responseBubbleSelector}" within ${c.hardTimeoutMs}ms ` +
-                  `(check the response selector, or that the message was actually sent)`);
+      return fail(`no new assistant bubble matched "${c.responseBubbleSelector}" within ${c.hardTimeoutMs}ms`);
     }
 
-    // --- observer loop: wait until the reply stops streaming --------------
     let lastText = '';
     let lastChange = Date.now();
     while (Date.now() < deadline) {
-      const last = bubbles.last();
       let text = '';
-      try { text = (await last.innerText()).trim(); } catch (_) { /* element re-rendering */ }
-
+      try { text = (await bubbles.last().innerText()).trim(); } catch (_) {}
       if (text && text !== lastText) { lastText = text; lastChange = Date.now(); }
-
-      let stillStreaming = false;
+      let streaming = false;
       if (c.streamingIndicatorSelector) {
-        stillStreaming = (await page.locator(c.streamingIndicatorSelector).count()) > 0;
+        streaming = (await page.locator(c.streamingIndicatorSelector).count()) > 0;
       }
-
-      const stableLongEnough = text && (Date.now() - lastChange) >= c.stableMs;
-      if (stableLongEnough && !stillStreaming) {
-        log(`reply settled after ${Date.now() - (deadline - c.hardTimeoutMs)}ms, ${text.length} chars`);
+      if (text && (Date.now() - lastChange) >= c.stableMs && !streaming) {
         return { output: text };
       }
       await sleep(c.pollMs);
     }
-
-    // hard timeout — return whatever we captured, flagged
-    if (lastText) {
-      log('hard timeout reached; returning last captured (possibly partial) text');
-      return { output: lastText, metadata: { truncated: true, reason: 'hard_timeout' } };
-    }
+    if (lastText) return { output: lastText, metadata: { truncated: true, reason: 'hard_timeout' } };
     return fail(`reply never produced text within ${c.hardTimeoutMs}ms`);
   } catch (e) {
     return fail(`unexpected error: ${e && e.message ? e.message : String(e)}`);
   } finally {
-    if (context) { await context.close().catch(() => {}); }
+    if (page) { await page.close().catch(() => {}); }
+    if (ownContext && context) { await context.close().catch(() => {}); }
   }
 }
 
-function resolveSubmit(c) {
-  if (c.submitMethod === 'click') return 'click';
-  if (c.submitMethod === 'enter') return 'enter';
-  return c.sendButtonSelector ? 'click' : 'enter'; // auto
-}
-
-function fail(message) {
-  log('FAIL:', message);
-  return { error: `[BRIDGE ERROR] ${message}` };
-}
+function fail(message) { log('FAIL:', message); return { error: `[BRIDGE ERROR] ${message}` }; }
 
 // ===========================================================================
-// 2. Promptfoo custom-provider interface.
-//    Promptfoo constructs this with { id, config } and calls callApi per test.
+// Promptfoo custom-provider interface.
 // ===========================================================================
 class ChatUiProvider {
   constructor(options = {}) {
@@ -232,36 +257,24 @@ class ChatUiProvider {
     this.config = options.config || {};
   }
   id() { return this.providerId; }
-  async callApi(prompt /*, context, options */) {
-    const result = await runPrompt(prompt, this.config);
-    // Promptfoo reads `output` for assertions, or surfaces `error`.
-    return result;
-  }
+  async callApi(prompt) { return runPrompt(prompt, this.config); }
 }
 
 module.exports = ChatUiProvider;
-// Also expose the raw function for custom harnesses/tests.
 module.exports.runPrompt = runPrompt;
 module.exports.closeBrowser = closeBrowser;
 
 // ===========================================================================
-// 3. CLI mode:  node automated_chat_bridge.js "my prompt"
-//    or:        PROMPTFOO_PROMPT="my prompt" node automated_chat_bridge.js
+// CLI mode
 // ===========================================================================
 if (require.main === module) {
   (async () => {
     const prompt = process.argv.slice(2).join(' ') || process.env.PROMPTFOO_PROMPT || '';
-    if (!prompt) {
-      console.log('[BRIDGE ERROR] no prompt given (argv or PROMPTFOO_PROMPT)');
-      process.exit(1);
-    }
+    if (!prompt) { console.log('[BRIDGE ERROR] no prompt given (argv or PROMPTFOO_PROMPT)'); process.exit(1); }
     const res = await runPrompt(prompt, {});
     await closeBrowser();
-    if (res.error) {
-      console.log(res.error); // failure log to stdout, as requested
-      process.exit(1);
-    }
-    process.stdout.write(res.output + '\n'); // clean payload to stdout
+    if (res.error) { console.log(res.error); process.exit(1); }
+    process.stdout.write(res.output + '\n');
     process.exit(0);
   })();
 }
