@@ -261,7 +261,7 @@ def _test_browser(target: Target, prompt: str, company_id) -> dict:
 
 def _do_request(method: str, url: str, headers: dict, body: Any) -> dict:
     def call(verify: bool) -> httpx.Response:
-        with httpx.Client(timeout=20, verify=verify, follow_redirects=True) as client:
+        with httpx.Client(timeout=60, verify=verify, follow_redirects=True) as client:
             if method.upper() == "GET":
                 return client.get(url, headers=headers, params=body if isinstance(body, dict) else None)
             return client.post(url, headers=headers, json=body)
@@ -277,7 +277,7 @@ def _do_request(method: str, url: str, headers: dict, body: Any) -> dict:
             else:
                 raise
     except httpx.TimeoutException:
-        return {"ok": False, "kind": "http", "error": "Timed out after 20s — endpoint unreachable or slow."}
+        return {"ok": False, "kind": "http", "error": "Timed out after 60s — endpoint unreachable, or the model is too slow to respond."}
     except Exception as exc:
         return {"ok": False, "kind": "http", "error": f"{type(exc).__name__}: {str(exc)[:300]}"}
 
