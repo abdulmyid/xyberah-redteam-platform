@@ -127,6 +127,14 @@ export default function CampaignDetail() {
             <Stat label="Pass rate" value={`${s.pass_rate ?? 100}%`} />
             <Stat label="Critical+High" value={(s.by_severity?.critical || 0) + (s.by_severity?.high || 0)} />
           </div>
+          {s.analytics && (
+            <div className="grid grid-cols-4 gap-3">
+              <Stat label="Cost" value={`$${(s.analytics.total_cost || 0).toFixed(4)}`} />
+              <Stat label="Tokens" value={s.analytics.total_tokens || 0} />
+              <Stat label="Avg latency" value={`${s.analytics.avg_latency_ms || 0} ms`} />
+              <Stat label="Requests" value={s.analytics.requests || 0} />
+            </div>
+          )}
           <div className="grid grid-cols-4 gap-2">
             {["critical","high","medium","low"].map((lvl) => (
               <div key={lvl} className={`rounded-lg p-3 text-center sev-${lvl}`}>

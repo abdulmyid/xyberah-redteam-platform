@@ -171,3 +171,28 @@ def bootstrap_global_admin(session: Session) -> None:
     session.add(User(email=email, username=s.admin_username, company_id=None,
                      role=Role.global_admin, password_hash=hash_password(s.admin_password)))
     session.commit()
+
+
+def api_token_user(request: Request, session: Session = Depends(get_session)) -> User:
+    """Authenticate an automation/CI client via `Authorization: Bearer <token>`
+    (or `X-API-Key`). Resolves to the token's creating user, so tenancy and role
+    apply exactly as in the UI. No CSRF header needed (not cookie-based)."""
+    import hashlib
+    from .models import ApiToken, utcnow as _utcnow
+
+    auth = request.headers.get("authorization", "")
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else request.headers.get("x-api-key", "")
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing API token")
+    row = session.exec(
+        select(ApiToken).where(ApiToken.token_hash == hashlib.sha256(token.encode()).hexdigest())
+    ).first()
+    if not row or row.revoked:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid API token")
+    user = session.get(User, row.created_by)
+    if not user or user.disabled:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token owner disabled")
+    row.last_used = _utcnow()
+    session.add(row)
+    session.commit()
+    return user

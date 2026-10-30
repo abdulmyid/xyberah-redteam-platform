@@ -182,3 +182,17 @@ class SavedTarget(SQLModel, table=True):
     config_enc: str = Field(default="", sa_column=Column(Text))  # Fernet-encrypted Target JSON
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class ApiToken(SQLModel, table=True):
+    """A bearer token for CI/CD and automation. Only the hash is stored; the
+    plaintext is shown once at creation. Acts as the creating user (tenancy/role)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token_hash: str = Field(index=True)
+    name: str = ""
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    last_used: Optional[datetime] = None
+    revoked: bool = False

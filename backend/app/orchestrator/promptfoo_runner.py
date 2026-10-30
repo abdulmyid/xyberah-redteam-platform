@@ -48,7 +48,12 @@ def parse_results(results_json: Path, tool: str = "promptfoo") -> list[dict[str,
             "prompt": str(prompt_text or "")[:8000],
             "output": str(response.get("output", ""))[:8000],
             "reason": "" if passed else str(grading.get("reason", ""))[:4000],
-            "extra": {"strategy": (r.get("testCase", {}).get("metadata", {}) or {}).get("strategyId")},
+            "extra": {
+                "strategy": (r.get("testCase", {}).get("metadata", {}) or {}).get("strategyId"),
+                "latency_ms": r.get("latencyMs"),
+                "cost": r.get("cost"),
+                "tokens": ((response.get("tokenUsage") or r.get("tokenUsage") or {}) or {}).get("total"),
+            },
         })
     return findings
 

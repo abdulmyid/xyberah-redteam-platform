@@ -34,6 +34,15 @@ def summarize(findings: list[dict[str, Any]]) -> dict[str, Any]:
                 d["failed"] += 1
             by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
 
+    costs = [float((f.get("extra") or {}).get("cost") or 0) for f in findings]
+    lats = [float((f.get("extra") or {}).get("latency_ms") or 0) for f in findings if (f.get("extra") or {}).get("latency_ms")]
+    toks = [int((f.get("extra") or {}).get("tokens") or 0) for f in findings]
+    analytics = {
+        "total_cost": round(sum(costs), 4),
+        "total_tokens": sum(toks),
+        "avg_latency_ms": round(sum(lats) / len(lats)) if lats else 0,
+        "requests": total,
+    }
     weighted = sum(SEVERITY_WEIGHT.get(f["severity"], 1) for f in failed)
     denom = max(total, 1) * 2
     risk = min(100, round(100 * weighted / denom)) if total else 0
@@ -54,6 +63,7 @@ def summarize(findings: list[dict[str, Any]]) -> dict[str, Any]:
         "by_strategy": by_strategy,
         "attack_methods": _attack_methods(by_plugin),
         "strategy_methods": _attack_methods({k: {**v, "tool": ""} for k, v in by_strategy.items()}),
+        "analytics": analytics,
         "remediation": _remediation(owasp),
         "top_failures": _top(failed),
     }

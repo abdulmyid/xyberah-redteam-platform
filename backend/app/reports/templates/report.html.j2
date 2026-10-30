@@ -71,6 +71,14 @@
     Tools: {% for t in tools_used %}<span class="pill">{{ t }}</span> {% endfor %}
   </div>
   {% if campaign.description %}<p>{{ campaign.description }}</p>{% endif %}
+  {% if s.analytics %}
+  <div class="meta" style="margin-top:6px">
+    Cost: <b>${{ '%.4f'|format(s.analytics.total_cost) }}</b> &nbsp;•&nbsp;
+    Tokens: <b>{{ s.analytics.total_tokens }}</b> &nbsp;•&nbsp;
+    Avg latency: <b>{{ s.analytics.avg_latency_ms }} ms</b> &nbsp;•&nbsp;
+    Requests: <b>{{ s.analytics.requests }}</b>
+  </div>
+  {% endif %}
 
   <div class="grid">
     <div style="text-align:center">
