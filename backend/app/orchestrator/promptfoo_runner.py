@@ -58,6 +58,48 @@ def parse_results(results_json: Path, tool: str = "promptfoo") -> list[dict[str,
     return findings
 
 
+def parse_custom(results_json: Path, severity: str = "high") -> list[dict[str, Any]]:
+    """Parse a custom-prompt eval. A failed test (the response broke a grading rule)
+    becomes a finding at the prompt set's chosen severity."""
+    if not results_json.exists():
+        return []
+    data = json.loads(results_json.read_text(encoding="utf-8"))
+    rows = (data.get("results", {}) or {}).get("results", []) or []
+    sev = severity if severity in ("critical", "high", "medium", "low") else "high"
+    findings: list[dict[str, Any]] = []
+    for r in rows:
+        passed = bool(r.get("success"))
+        grading = r.get("gradingResult") or {}
+        response = r.get("response") or {}
+        vars_ = r.get("vars", {}) or {}
+        prompt = r.get("prompt", {})
+        prompt_text = vars_.get("prompt") or (prompt.get("raw") if isinstance(prompt, dict) else str(prompt))
+        # Which rule(s) failed, for the report
+        failed_checks = []
+        for cr in (grading.get("componentResults") or []):
+            if not cr.get("pass"):
+                a = cr.get("assertion") or {}
+                failed_checks.append(a.get("type") or cr.get("reason", ""))
+        findings.append({
+            "tool": "custom",
+            "category": "custom-prompts",
+            "plugin": "custom:prompt",
+            "severity": sev if not passed else "low",
+            "passed": passed,
+            "score": r.get("score"),
+            "prompt": str(prompt_text or "")[:8000],
+            "output": str(response.get("output", ""))[:8000],
+            "reason": "" if passed else str(grading.get("reason", ""))[:4000],
+            "extra": {
+                "failed_checks": failed_checks,
+                "latency_ms": r.get("latencyMs"),
+                "cost": r.get("cost"),
+                "tokens": ((response.get("tokenUsage") or r.get("tokenUsage") or {}) or {}).get("total"),
+            },
+        })
+    return findings
+
+
 def progress_from_output(line: str) -> tuple[int, int] | None:
     """Best-effort '[n/m]' progress parse from Promptfoo stdout lines."""
     import re

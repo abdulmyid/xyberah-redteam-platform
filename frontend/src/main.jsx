@@ -7,6 +7,8 @@ import AcceptInvite from "./pages/AcceptInvite.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import NewCampaign from "./pages/NewCampaign.jsx";
 import CampaignDetail from "./pages/CampaignDetail.jsx";
+import ModelAudit from "./pages/ModelAudit.jsx";
+import Prompts from "./pages/Prompts.jsx";
 import Settings from "./pages/Settings.jsx";
 import Layout from "./components/Layout.jsx";
 import "./index.css";
@@ -26,6 +28,8 @@ function App() {
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/campaigns/new" element={<Protected><NewCampaign /></Protected>} />
       <Route path="/campaigns/:id" element={<Protected><CampaignDetail /></Protected>} />
+      <Route path="/prompts" element={<Protected><Prompts /></Protected>} />
+      <Route path="/model-audit" element={<Protected><ModelAudit /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

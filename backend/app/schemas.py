@@ -69,12 +69,29 @@ class SmtpIn(BaseModel):
     use_tls: Optional[bool] = None
 
 
+# ---- prompt sets / datasets ------------------------------------------------ #
+class Grading(BaseModel):
+    use_rubric: bool = True
+    rubric: str = ""
+    must_not_contain: list[str] = Field(default_factory=list)
+    must_contain: list[str] = Field(default_factory=list)
+    severity: str = "high"
+
+
+class PromptSetIn(BaseModel):
+    name: str
+    description: str = ""
+    prompts: list[str] = Field(default_factory=list)
+    grading: Grading = Field(default_factory=Grading)
+
+
 # ---- campaigns ------------------------------------------------------------- #
 class ToolSelection(BaseModel):
     promptfoo: bool = True
     garak: bool = False
     pyrit: bool = False
     inspect: bool = False
+    custom: bool = False
     purpose: str = ""
     promptfoo_plugins: list[str] = Field(default_factory=list)
     promptfoo_strategies: list[str] = Field(default_factory=lambda: ["basic"])
@@ -85,6 +102,12 @@ class ToolSelection(BaseModel):
     inspect_tasks: list[str] = Field(default_factory=list)
     num_tests: int = 5
     garak_generations: int = 5
+    # Custom prompts (own dataset). prompt_set_id references a saved library set;
+    # it is resolved into custom_prompts/custom_grading at campaign creation so the
+    # run is reproducible even if the library set is later edited.
+    prompt_set_id: Optional[int] = None
+    custom_prompts: list[str] = Field(default_factory=list)
+    custom_grading: dict = Field(default_factory=dict)
 
 
 class TargetTestIn(BaseModel):

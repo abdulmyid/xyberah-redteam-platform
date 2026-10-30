@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from ..auth import assert_same_company, company_scope, current_user, require_role
 from ..db import get_session
-from ..models import Campaign, Company, Finding, Role, User
+from ..models import Campaign, Company, Finding, PromptSet, Role, User
 
 SYSTEM_COMPANY_SLUG = "__system__"
 
@@ -69,9 +69,18 @@ def create_campaign(body: CampaignIn, user: User = Depends(require_role(Role.ana
     # hidden system company so they can scan without restriction.
     owner_company = user.company_id if user.company_id is not None else system_company(session).id
     missing = missing_keys(body.target)
+    tools = {**body.tools.model_dump(), "purpose": body.tools.purpose}
+    # Snapshot a selected prompt-set library entry into the campaign so the run is
+    # reproducible even if the set is later edited or deleted.
+    if tools.get("custom") and tools.get("prompt_set_id") and not tools.get("custom_prompts"):
+        ps = session.get(PromptSet, tools["prompt_set_id"])
+        scope = company_scope(user)
+        if not ps or (scope is not None and ps.company_id != scope):
+            raise HTTPException(404, "No such prompt set")
+        tools["custom_prompts"] = ps.prompts or []
+        tools["custom_grading"] = ps.grading or {}
     campaign = Campaign(company_id=owner_company, name=body.name, description=body.description,
-                        created_by=user.id, target=body.target.model_dump(),
-                        tools={**body.tools.model_dump(), "purpose": body.tools.purpose})
+                        created_by=user.id, target=body.target.model_dump(), tools=tools)
     session.add(campaign)
     session.commit()
     session.refresh(campaign)

@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Seed the tools volume on first boot (keeps venvs at their original /opt/tools paths)
-if [ ! -e /opt/tools/.seeded ]; then
-  echo "[xyberah] seeding tool environments into /opt/tools ..."
-  mkdir -p /opt/tools
-  cp -a /opt/tools-seed/. /opt/tools/
-  touch /opt/tools/.seeded
-  echo "[xyberah] tools ready: garak, pyrit, inspect"
-fi
+# Seed tool venvs into the volume. Copies any tool missing from /opt/tools, so a
+# new tool added to the image (e.g. modelaudit) appears in existing volumes too.
+mkdir -p /opt/tools
+for d in /opt/tools-seed/*/; do
+  name=$(basename "$d")
+  if [ ! -e "/opt/tools/$name" ]; then
+    echo "[xyberah] seeding tool: $name"
+    cp -a "$d" "/opt/tools/$name"
+  fi
+done
+touch /opt/tools/.seeded
 
 mkdir -p /data /config
 # Default branding file so the login page is themed before any admin edits it

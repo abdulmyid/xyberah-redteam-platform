@@ -6,6 +6,7 @@ const META = {
   garak: { label: "garak", desc: "NVIDIA LLM vulnerability scanner" },
   pyrit: { label: "PyRIT", desc: "Microsoft risk-identification toolkit" },
   inspect: { label: "Inspect AI", desc: "UK AISI agentic-safety evals" },
+  modelaudit: { label: "ModelAudit", desc: "Model-file malware / unsafe-deserialization scanner" },
 };
 
 export default function Tools() {

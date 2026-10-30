@@ -21,6 +21,8 @@ class Settings:
         self.pyrit_python = self.tools_dir / "pyrit" / "bin" / "python"
         self.inspect_python = self.tools_dir / "inspect" / "bin" / "python"
         self.inspect_bin = self.tools_dir / "inspect" / "bin" / "inspect"
+        self.modelaudit_python = self.tools_dir / "modelaudit" / "bin" / "python"
+        self.modelaudit_bin = self.tools_dir / "modelaudit" / "bin" / "modelaudit"
 
         self.admin_username = os.getenv("XYBERAH_ADMIN_USERNAME", "admin")
         self.admin_password = os.getenv("XYBERAH_ADMIN_PASSWORD", "")

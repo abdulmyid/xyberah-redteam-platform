@@ -133,15 +133,19 @@ def _run_campaign(campaign_id: int) -> None:
 
 def _run_stage(campaign_id: int, tool: str, target: Target, tools: dict[str, Any],
                workdir: Path, stop: threading.Event) -> list[dict[str, Any]]:
-    # Only Promptfoo can drive a web chat UI (via the Playwright bridge); garak,
-    # PyRIT and Inspect need an HTTP/provider endpoint, so they skip for browser targets.
-    if target.type == "browser" and tool != "promptfoo":
+    # Only Promptfoo-driven stages can drive a web chat UI (via the Playwright
+    # bridge); garak, PyRIT and Inspect need an HTTP/provider endpoint, so they
+    # skip for browser targets. Custom prompts run through Promptfoo eval, so they
+    # work against a browser target too.
+    if target.type == "browser" and tool not in ("promptfoo", "custom"):
         from .events import bus
         bus.publish(campaign_id, "log", tool=tool,
                     line=f"[{tool}] skipped: not supported for web chat UI (browser) targets")
         return []
     if tool == "promptfoo":
         return _run_promptfoo(campaign_id, target, tools, workdir / "promptfoo", stop)
+    if tool == "custom":
+        return _run_custom(campaign_id, target, tools, workdir / "custom", stop)
     if tool == "pyrit":
         return _run_pyrit(campaign_id, target, tools, workdir / "pyrit", stop)
     if tool == "garak":
@@ -175,6 +179,38 @@ def _run_promptfoo(campaign_id, target, tools, out: Path, stop) -> list[dict]:
            "-o", str(results), "--no-progress-bar"]
     _stream(campaign_id, "promptfoo", cmd, cwd=out, env=env, stop=stop)
     return promptfoo_runner.parse_results(results, tool="promptfoo")
+
+
+# ---- Custom prompts (the user's own dataset, via Promptfoo eval) ----------- #
+def _run_custom(campaign_id, target, tools, out: Path, stop) -> list[dict]:
+    out.mkdir(parents=True, exist_ok=True)
+    prompts = [p for p in (tools.get("custom_prompts") or []) if str(p).strip()]
+    if not prompts:
+        from .events import bus
+        bus.publish(campaign_id, "log", tool="custom",
+                    line="[custom] no prompts in the selected set; skipping")
+        return []
+    grading = tools.get("custom_grading") or {}
+
+    # A browser target needs its saved authenticated session materialized first.
+    session_path = ""
+    if target.type == "browser" and target.browser and target.browser.session_id:
+        from . import browser_session
+        with Session(engine) as s:
+            c = s.get(Campaign, campaign_id)
+            company_id = c.company_id if c else None
+        session_path = browser_session.materialize(target.browser.session_id, company_id, out) or ""
+
+    cfg = promptfoo_config.build_custom_eval_config(
+        campaign_name=f"campaign-{campaign_id}", target=target,
+        prompts=prompts, grading=grading, workdir=out,
+        browser_session_path=session_path,
+    )
+    results = out / "results.json"
+    env = {**os.environ, **target_env(target), "PROMPTFOO_DISABLE_TELEMETRY": "1"}
+    cmd = [get_settings().engine_bin, "eval", "-c", str(cfg), "-o", str(results), "--no-progress-bar"]
+    _stream(campaign_id, "custom", cmd, cwd=out, env=env, stop=stop)
+    return promptfoo_runner.parse_custom(results, severity=grading.get("severity", "high"))
 
 
 # ---- PyRIT (via a Promptfoo python provider) ------------------------------ #
@@ -282,7 +318,7 @@ def _stream(campaign_id: int, tool: str, cmd: list[str], cwd: Path,
 
 # ---- shared state helpers -------------------------------------------------- #
 def _plan_stages(tools: dict[str, Any]) -> list[dict[str, Any]]:
-    order = ["promptfoo", "pyrit", "garak", "inspect"]
+    order = ["promptfoo", "custom", "pyrit", "garak", "inspect"]
     return [{"tool": t, "status": "pending", "done": 0, "total": 0,
              "started_at": None, "finished_at": None, "error": ""}
             for t in order if tools.get(t)]

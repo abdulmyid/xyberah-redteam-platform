@@ -196,3 +196,25 @@ class ApiToken(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
     last_used: Optional[datetime] = None
     revoked: bool = False
+
+
+class PromptSet(SQLModel, table=True):
+    """A reusable library of the user's own test prompts (a "dataset") plus how to
+    grade responses to them. Used to run custom-prompt evaluations against a target.
+    Company-scoped; global-admin sets have company_id = None.
+
+    grading shape:
+      {"use_rubric": bool, "rubric": str,
+       "must_not_contain": [str], "must_contain": [str],
+       "severity": "critical|high|medium|low"}
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    description: str = ""
+    prompts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    grading: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)

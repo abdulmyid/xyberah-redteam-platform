@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 
 const TARGET_TYPES = [
@@ -209,13 +209,22 @@ export default function NewCampaign() {
     } finally { setTesting(false); }
   }
   const [tools, setTools] = useState({
-    promptfoo: true, garak: false, pyrit: false, inspect: false,
+    promptfoo: true, garak: false, pyrit: false, inspect: false, custom: false,
     promptfoo_plugins: [], promptfoo_strategies: ["basic"], garak_probes: [],
     pyrit_attacks: ["red_teaming"], pyrit_objectives: [], pyrit_max_turns: 5,
-    inspect_tasks: [], num_tests: 5, garak_generations: 5,
+    inspect_tasks: [], num_tests: 5, garak_generations: 5, prompt_set_id: null,
   });
 
   useEffect(() => { api.get("/api/catalog").then(setCatalog); }, []);
+
+  // Prompt-set library for the "Custom prompts" engine
+  const [promptSets, setPromptSets] = useState([]);
+  const [searchParams] = useSearchParams();
+  useEffect(() => { api.get("/api/prompts").then(setPromptSets).catch(() => {}); }, []);
+  useEffect(() => {
+    const pid = searchParams.get("prompt_set");
+    if (pid) setTools((t) => ({ ...t, custom: true, prompt_set_id: +pid }));
+  }, [searchParams]);
 
   const [savedTargets, setSavedTargets] = useState([]);
   const [selectedSaved, setSelectedSaved] = useState("");
@@ -256,6 +265,12 @@ export default function NewCampaign() {
     let t;
     try { t = buildTarget(); }
     catch { return setErr("HTTP body/headers must be valid JSON"); }
+    if (tools.custom && !tools.prompt_set_id) {
+      return setErr("Select a prompt set for the Custom prompts engine, or turn it off.");
+    }
+    if (!tools.promptfoo && !tools.garak && !tools.pyrit && !tools.inspect && !tools.custom) {
+      return setErr("Enable at least one engine.");
+    }
     try {
       const r = await api.post("/api/campaigns", {
         name, description: "", target: t, tools: { ...tools, purpose },
@@ -527,6 +542,7 @@ export default function NewCampaign() {
           <Toggle on={tools.garak} set={(v) => up({ garak: v })} label="garak" desc="NVIDIA LLM vulnerability probes" />
           <Toggle on={tools.pyrit} set={(v) => up({ pyrit: v })} label="PyRIT" desc="Microsoft multi-turn attack orchestration" />
           <Toggle on={tools.inspect} set={(v) => up({ inspect: v })} label="Inspect AI" desc="Agentic / tool-use / reasoning safety" />
+          <Toggle on={tools.custom} set={(v) => up({ custom: v })} label="Custom prompts" desc="Your own prompts/datasets, graded your way" />
         </div>
 
         {tools.promptfoo && (
@@ -577,6 +593,32 @@ export default function NewCampaign() {
             <div className="font-semibold text-sm mb-1">Inspect AI tasks</div>
             <CheckGroup options={catalog.inspect.tasks} selected={tools.inspect_tasks}
               onChange={(v) => up({ inspect_tasks: v })} />
+          </div>
+        )}
+        {tools.custom && (
+          <div className="border-t pt-4 space-y-2">
+            <div className="font-semibold text-sm">Custom prompt set</div>
+            {promptSets.length === 0 ? (
+              <p className="text-xs text-slate-500">
+                No saved prompt sets yet. Create one under <a className="underline" href="/prompts">Prompts &amp; Datasets</a>,
+                then come back and select it here.
+              </p>
+            ) : (
+              <>
+                <select className="input" value={tools.prompt_set_id || ""}
+                        onChange={(e) => up({ prompt_set_id: e.target.value ? +e.target.value : null })}>
+                  <option value="">Select a prompt set…</option>
+                  {promptSets.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.count} prompts · {s.grading?.severity || "high"})</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">
+                  Runs your prompts against the target and grades each reply with the set's rubric / keyword rules.
+                  Works with every target type, including the web chat UI. Manage sets under{" "}
+                  <a className="underline" href="/prompts">Prompts &amp; Datasets</a>.
+                </p>
+              </>
+            )}
           </div>
         )}
 

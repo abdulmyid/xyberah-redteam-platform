@@ -2,6 +2,14 @@
 # Node comes from the official glibc node image so native promptfoo modules match this base.
 FROM node:24-bookworm-slim AS node
 
+# ModelAudit scanner venv (needs cargo to build picklescan; cargo stays out of the final image)
+FROM python:3.12-bookworm AS modelaudit-build
+ARG MODELAUDIT_VERSION=0.2.52
+RUN apt-get update && apt-get install -y --no-install-recommends cargo \
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m venv /opt/tools/modelaudit \
+ && /opt/tools/modelaudit/bin/pip install --no-cache-dir "modelaudit==${MODELAUDIT_VERSION}"
+
 FROM python:3.12-bookworm AS base
 ENV PIP_ROOT_USER_ACTION=ignore PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     PIP_RETRIES=8 PIP_DEFAULT_TIMEOUT=180
@@ -40,6 +48,7 @@ RUN python -m venv /opt/tools/garak \
  && python -m venv /opt/tools/inspect \
  && /opt/tools/inspect/bin/pip install --no-cache-dir "inspect-ai==${INSPECT_VERSION}" \
  && mv /opt/tools /opt/tools-seed
+COPY --from=modelaudit-build /opt/tools/modelaudit /opt/tools-seed/modelaudit
 
 # ---- backend app ----------------------------------------------------------- #
 WORKDIR /opt/xyberah-app
@@ -48,7 +57,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY engine ./engine
 COPY entrypoint.sh /usr/local/bin/xyberah-entrypoint
-RUN chmod +x /usr/local/bin/xyberah-entrypoint
+# Strip any CRLF so the shebang works when built from a Windows checkout
+RUN sed -i 's/\r$//' /usr/local/bin/xyberah-entrypoint && chmod +x /usr/local/bin/xyberah-entrypoint
 
 # Playwright + Chromium for the "Browser (web chat UI)" target bridge.
 # Installed into the engine dir so Promptfoo's JS provider can require('playwright').
