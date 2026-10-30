@@ -9,6 +9,19 @@ from sqlmodel import Session, select
 from ..auth import assert_same_company, company_scope, current_user, require_role
 from ..db import get_session
 from ..models import Campaign, Company, Finding, Role, User
+
+SYSTEM_COMPANY_SLUG = "__system__"
+
+
+def system_company(session: Session) -> Company:
+    """Hidden company that owns global-admin campaigns (which have no company)."""
+    c = session.exec(select(Company).where(Company.slug == SYSTEM_COMPANY_SLUG)).first()
+    if not c:
+        c = Company(name="Global (system)", slug=SYSTEM_COMPANY_SLUG, max_concurrent_campaigns=99)
+        session.add(c)
+        session.commit()
+        session.refresh(c)
+    return c
 from ..orchestrator import runner
 from ..orchestrator.events import bus
 from ..orchestrator.targets import Target, missing_keys
@@ -52,10 +65,11 @@ def list_campaigns(user: User = Depends(current_user), session: Session = Depend
 @router.post("", status_code=201)
 def create_campaign(body: CampaignIn, user: User = Depends(require_role(Role.analyst)),
                     session: Session = Depends(get_session)):
-    if user.company_id is None:
-        raise HTTPException(400, "Global admins must act within a company to create campaigns")
+    # Global admins have no company of their own; their campaigns live under the
+    # hidden system company so they can scan without restriction.
+    owner_company = user.company_id if user.company_id is not None else system_company(session).id
     missing = missing_keys(body.target)
-    campaign = Campaign(company_id=user.company_id, name=body.name, description=body.description,
+    campaign = Campaign(company_id=owner_company, name=body.name, description=body.description,
                         created_by=user.id, target=body.target.model_dump(),
                         tools={**body.tools.model_dump(), "purpose": body.tools.purpose})
     session.add(campaign)

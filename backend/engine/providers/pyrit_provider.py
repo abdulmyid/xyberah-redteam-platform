@@ -44,7 +44,7 @@ def _build_target(spec: dict[str, Any]):
         base = spec.get("base_url") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         return OpenAIChatTarget(model_name=spec["model"], endpoint=f"{base.rstrip('/')}/v1/chat/completions",
                                 api_key="ollama")
-    if ttype == "http":
+    if ttype in ("http", "demo"):
         h = spec["http"]
         return HTTPTarget(http_request=_raw_http(h), prompt_regex_string="{PROMPT}",
                           callback_function=_http_response_parser(h.get("response_path", "reply")))

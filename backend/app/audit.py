@@ -19,7 +19,7 @@ from .models import AuditLog, User
 
 MUTATING = {"POST", "PUT", "PATCH", "DELETE"}
 # Noisy or sensitive paths we don't record a body for (we never log bodies anyway)
-SKIP_PREFIXES = ("/api/auth/totp/qr",)
+SKIP_PREFIXES = ("/api/auth/totp/qr", "/api/demo/")
 
 
 def _actor(request) -> tuple[Optional[int], str, Optional[int]]:

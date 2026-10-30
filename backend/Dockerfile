@@ -3,7 +3,8 @@
 FROM node:24-bookworm-slim AS node
 
 FROM python:3.12-bookworm AS base
-ENV PIP_ROOT_USER_ACTION=ignore PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ENV PIP_ROOT_USER_ACTION=ignore PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
+    PIP_RETRIES=8 PIP_DEFAULT_TIMEOUT=180
 
 # Node + Promptfoo engine (same version as the Xyberah image)
 COPY --from=node /usr/local/bin/node /usr/local/bin/node

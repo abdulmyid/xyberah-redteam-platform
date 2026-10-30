@@ -7,6 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM caddy:2.10-alpine
+RUN apk add --no-cache openssl
 COPY --from=build /app/dist /srv
 COPY proxy/Caddyfile /etc/caddy/Caddyfile
 COPY proxy/entrypoint.sh /usr/local/bin/proxy-entrypoint

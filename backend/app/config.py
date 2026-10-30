@@ -28,6 +28,8 @@ class Settings:
         self.session_hours = int(os.getenv("XYBERAH_SESSION_HOURS", "12"))
         self.max_concurrent_campaigns = int(os.getenv("XYBERAH_MAX_CONCURRENT_CAMPAIGNS", "1"))
         self.grader = os.getenv("XYBERAH_GRADER", "openai:chat:gpt-4.1-mini")
+        # Built-in vulnerable demo target, reachable from tool subprocesses in-container
+        self.demo_url = os.getenv("XYBERAH_DEMO_URL", "http://127.0.0.1:8000/api/demo/chat")
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.campaigns_dir.mkdir(parents=True, exist_ok=True)

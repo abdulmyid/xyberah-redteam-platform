@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useApp } from "../lib/context.jsx";
@@ -12,7 +12,26 @@ export default function Login() {
   const [mfa, setMfa] = useState({ token: "", methods: [], method: "totp", code: "" });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(null);
+  const [setupForm, setSetupForm] = useState({ email: "", username: "", password: "", confirm: "" });
   const b = branding || {};
+
+  useEffect(() => {
+    api.get("/api/auth/setup-status").then((r) => setNeedsSetup(r.needs_setup)).catch(() => setNeedsSetup(false));
+  }, []);
+
+  async function submitSetup(e) {
+    e.preventDefault();
+    setErr("");
+    if (setupForm.password !== setupForm.confirm) return setErr("Passwords do not match");
+    setBusy(true);
+    try {
+      await api.post("/api/auth/setup", {
+        email: setupForm.email, username: setupForm.username, password: setupForm.password,
+      });
+      await finish(); // setup auto-signs in
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
 
   async function submitPassword(e) {
     e.preventDefault();
@@ -57,7 +76,38 @@ export default function Login() {
 
         {err && <div className="mb-4 rounded-lg bg-red-50 text-red-700 text-sm px-3 py-2">{err}</div>}
 
-        {step === "password" ? (
+        {needsSetup === null ? (
+          <p className="text-slate-500 text-sm">Loading…</p>
+        ) : needsSetup ? (
+          <form onSubmit={submitSetup} className="space-y-4">
+            <div className="rounded-lg bg-violet-50 text-sm px-3 py-2" style={{ color: "var(--brand-primary)" }}>
+              Welcome! This is a fresh install. Create the first <b>global administrator</b> account.
+            </div>
+            <div>
+              <label className="label">Admin email</label>
+              <input className="input" type="email" value={setupForm.email} autoFocus required
+                     onChange={(e) => setSetupForm({ ...setupForm, email: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Display name (optional)</label>
+              <input className="input" value={setupForm.username}
+                     onChange={(e) => setSetupForm({ ...setupForm, username: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Password (min 10 characters)</label>
+              <input className="input" type="password" value={setupForm.password} required
+                     onChange={(e) => setSetupForm({ ...setupForm, password: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Confirm password</label>
+              <input className="input" type="password" value={setupForm.confirm} required
+                     onChange={(e) => setSetupForm({ ...setupForm, confirm: e.target.value })} />
+            </div>
+            <button className="btn-primary w-full" disabled={busy}>
+              {busy ? "Creating…" : "Create admin & sign in"}
+            </button>
+          </form>
+        ) : step === "password" ? (
           <form onSubmit={submitPassword} className="space-y-4">
             <div>
               <label className="label">Email</label>

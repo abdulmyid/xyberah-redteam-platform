@@ -6,6 +6,8 @@ export default function Email() {
   const [form, setForm] = useState({ host: "", port: 587, username: "", password: "", from_addr: "", from_name: "Xyberah", use_tls: true });
   const [msg, setMsg] = useState("");
   const [test, setTest] = useState("");
+  const [result, setResult] = useState(null); // {ok, message}
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     api.get("/api/smtp").then((c) => { setCfg(c); setForm((f) => ({ ...f, ...c, password: "" })); });
@@ -17,9 +19,13 @@ export default function Email() {
     catch (e) { setMsg(e.message); }
   }
   async function sendTest() {
-    setMsg("");
-    try { const r = await api.post(`/api/smtp/test?to=${encodeURIComponent(test)}`); setMsg(`Test sent via ${r.delivered}.`); }
-    catch (e) { setMsg(e.message); }
+    setResult(null); setSending(true);
+    try {
+      const r = await api.post(`/api/smtp/test?to=${encodeURIComponent(test)}`);
+      setResult({ ok: r.ok, message: r.message });
+    } catch (e) {
+      setResult({ ok: false, message: e.message });
+    } finally { setSending(false); }
   }
 
   if (!cfg) return <p className="text-slate-500">Loading…</p>;
@@ -45,10 +51,19 @@ export default function Email() {
       <div className="flex items-center gap-2">
         <button className="btn-primary">Save SMTP</button>
       </div>
-      <div className="border-t pt-4 flex items-end gap-2">
-        <div className="flex-1"><label className="label">Send a test email to</label>
-          <input className="input" value={test} onChange={(e) => setTest(e.target.value)} placeholder="you@company.com" /></div>
-        <button type="button" className="btn-ghost" onClick={sendTest} disabled={!test}>Send test</button>
+      <div className="border-t pt-4">
+        <div className="flex items-end gap-2">
+          <div className="flex-1"><label className="label">Send a test email to</label>
+            <input className="input" value={test} onChange={(e) => setTest(e.target.value)} placeholder="you@company.com" /></div>
+          <button type="button" className="btn-ghost" onClick={sendTest} disabled={!test || sending}>
+            {sending ? "Sending…" : "Send test"}
+          </button>
+        </div>
+        {result && (
+          <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${result.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>
+            {result.ok ? "✓ " : "✗ "}{result.message}
+          </div>
+        )}
       </div>
     </form>
   );

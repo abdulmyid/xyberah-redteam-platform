@@ -1,20 +1,39 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, atLeast } from "../lib/api";
 import { useApp } from "../lib/context.jsx";
 import { Status, RiskGauge } from "../components/ui.jsx";
 
 export default function Dashboard() {
   const { user } = useApp();
+  const nav = useNavigate();
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [demoBusy, setDemoBusy] = useState(false);
   const load = () => api.get("/api/campaigns").then(setCampaigns).finally(() => setLoading(false));
   useEffect(() => {
     load();
     const t = setInterval(load, 5000); // keep running campaigns fresh
     return () => clearInterval(t);
   }, []);
+
+  async function runDemo() {
+    setDemoBusy(true);
+    try {
+      // Built-in vulnerable target + garak's deterministic probes => findings with no API key
+      const r = await api.post("/api/campaigns", {
+        name: "Demo scan",
+        description: "Built-in vulnerable target — no API key required",
+        target: { type: "demo" },
+        tools: { promptfoo: false, garak: true, pyrit: false, inspect: false,
+                 garak_probes: ["promptinject", "web_injection"],
+                 garak_generations: 2, num_tests: 3 },
+      });
+      await api.post(`/api/campaigns/${r.id}/start`).catch(() => {});
+      nav(`/campaigns/${r.id}`);
+    } catch (e) { alert(e.message); } finally { setDemoBusy(false); }
+  }
 
   return (
     <div>
@@ -24,9 +43,21 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500">Red-teaming and security evaluation runs for your company.</p>
         </div>
         {atLeast(user.role, "analyst") && (
-          <Link to="/campaigns/new" className="btn-primary">+ New campaign</Link>
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={runDemo} disabled={demoBusy}>
+              {demoBusy ? "Starting…" : "⚡ Try a demo scan"}
+            </button>
+            <Link to="/campaigns/new" className="btn-primary">+ New campaign</Link>
+          </div>
         )}
       </div>
+      {atLeast(user.role, "analyst") && campaigns.length === 0 && (
+        <div className="card p-4 mb-4 text-sm bg-violet-50 border-violet-200">
+          New here? Click <b>⚡ Try a demo scan</b> to run a real scan against a built-in
+          vulnerable chatbot — no API key or target setup needed — then explore the live
+          monitoring and report before testing a production target.
+        </div>
+      )}
 
       {loading ? (
         <p className="text-slate-500">Loading…</p>

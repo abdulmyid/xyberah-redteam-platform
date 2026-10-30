@@ -6,7 +6,7 @@
 }
 
 https://:443 {
-	import tls_directive
+	import /etc/caddy/tls.conf
 
 	encode zstd gzip
 
@@ -25,8 +25,10 @@ https://:443 {
 		file_server
 	}
 
+	# NOTE: no HSTS here on purpose — with the default self-signed cert, HSTS makes
+	# browsers hard-refuse the connection (no click-through). Add HSTS at your edge
+	# or here only once a real/trusted certificate is installed.
 	header {
-		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy strict-origin-when-cross-origin

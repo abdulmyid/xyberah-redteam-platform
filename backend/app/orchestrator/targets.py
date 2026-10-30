@@ -23,7 +23,7 @@ class HttpTarget(BaseModel):
 
 
 class Target(BaseModel):
-    type: Literal["openai", "anthropic", "ollama", "http"]
+    type: Literal["openai", "anthropic", "ollama", "http", "demo"]
     label: str = ""
     model: str = ""
     base_url: Optional[str] = None  # OpenAI-compatible gateways, Ollama host
@@ -32,20 +32,33 @@ class Target(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> "Target":
+        if self.type == "demo" and not self.http:
+            # Built-in vulnerable demo chatbot (no API key needed)
+            from ..config import get_settings
+            self.http = HttpTarget(url=get_settings().demo_url,
+                                   body={"message": "{{prompt}}"}, response_path="reply")
         if self.type == "http" and not self.http:
             raise ValueError("http target needs http settings")
-        if self.type != "http" and not self.model:
+        if self.type not in ("http", "demo") and not self.model:
             raise ValueError("model is required")
         return self
+
+    @property
+    def is_http_like(self) -> bool:
+        return self.type in ("http", "demo")
 
     @property
     def display(self) -> str:
         if self.label:
             return self.label
-        return self.http.url if self.type == "http" and self.http else f"{self.type}:{self.model}"
+        if self.type == "demo":
+            return "Built-in demo target"
+        return self.http.url if self.is_http_like and self.http else f"{self.type}:{self.model}"
 
 
 def missing_keys(target: Target) -> list[str]:
+    if target.type == "demo":
+        return []
     env = KEY_ENV.get(target.type)
     return [env] if env and not os.getenv(env) else []
 
@@ -66,7 +79,7 @@ def promptfoo_provider(target: Target) -> dict[str, Any]:
         pid = f"anthropic:messages:{target.model}"
     elif target.type == "ollama":
         pid = f"ollama:chat:{target.model}"
-    else:
+    else:  # http or demo
         h = target.http
         assert h
         pid = "http"

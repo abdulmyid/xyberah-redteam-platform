@@ -1,5 +1,7 @@
-node_modules
-dist
-backend/__pycache__
+**/node_modules
+**/dist
 **/__pycache__
+**/*.pyc
 .git
+.env
+*.db

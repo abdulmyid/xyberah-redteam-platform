@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { api, atLeast } from "../lib/api";
 import { useApp } from "../lib/context.jsx";
@@ -9,6 +9,7 @@ const SEV_COLOR = { critical: "#b91c1c", high: "#ea580c", medium: "#d97706", low
 
 export default function CampaignDetail() {
   const { id } = useParams();
+  const nav = useNavigate();
   const { user } = useApp();
   const [c, setC] = useState(null);
   const [findings, setFindings] = useState([]);
@@ -40,6 +41,11 @@ export default function CampaignDetail() {
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [logs]);
 
   const act = async (verb) => { await api.post(`/api/campaigns/${id}/${verb}`).catch((e) => alert(e.message)); reload(); };
+  const remove = async () => {
+    if (!confirm("Delete this campaign and all its findings? This cannot be undone.")) return;
+    try { await api.del(`/api/campaigns/${id}`); nav("/"); }
+    catch (e) { alert(e.message); }
+  };
   const share = async () => {
     const r = await api.post(`/api/campaigns/${id}/share`);
     navigator.clipboard?.writeText(`${location.origin}${r.url}.html`);
@@ -69,6 +75,7 @@ export default function CampaignDetail() {
             {c.status === "running" && <button className="btn-ghost" onClick={() => act("pause")}>Pause</button>}
             {c.status === "paused" && <button className="btn-primary" onClick={() => act("resume")}>Resume</button>}
             {running && <button className="btn-danger" onClick={() => act("stop")}>Stop</button>}
+            {!running && <button className="btn-ghost" onClick={remove}>Delete</button>}
           </div>
         )}
       </div>

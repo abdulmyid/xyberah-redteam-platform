@@ -7,6 +7,12 @@ from .orchestrator.targets import Target
 
 
 # ---- auth / mfa ------------------------------------------------------------ #
+class SetupIn(BaseModel):
+    email: str
+    username: str = ""
+    password: str
+
+
 class LoginIn(BaseModel):
     email: str  # not EmailStr: internal domains (e.g. admin@xyberah.local) must log in
     password: str

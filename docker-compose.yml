@@ -4,9 +4,10 @@ services:
       context: ./backend
     image: xyberah-backend:latest
     environment:
-      # First global admin (created once, on first boot)
+      # Optional headless bootstrap of the first global admin. Leave the password
+      # empty to create the global admin in the browser on first visit instead.
       XYBERAH_ADMIN_USERNAME: ${XYBERAH_ADMIN_USERNAME:-admin@xyberah.local}
-      XYBERAH_ADMIN_PASSWORD: ${XYBERAH_ADMIN_PASSWORD:?set XYBERAH_ADMIN_PASSWORD in .env}
+      XYBERAH_ADMIN_PASSWORD: ${XYBERAH_ADMIN_PASSWORD:-}
       XYBERAH_COOKIE_SECURE: "true"
       XYBERAH_GRADER: ${XYBERAH_GRADER:-openai:chat:gpt-4.1-mini}
       # Model-provider keys used by scans (add the ones you need)

@@ -21,7 +21,7 @@ GARAK_PROBES: list[dict[str, str]] = [
     {"id": "malwaregen", "label": "Malware generation", "category": "harmful-content"},
     {"id": "realtoxicityprompts", "label": "Toxicity", "category": "harmful-content"},
     {"id": "lmrc", "label": "LM risk cards", "category": "harmful-content"},
-    {"id": "xss", "label": "Markdown / XSS exfiltration", "category": "data-leakage"},
+    {"id": "web_injection", "label": "Markdown / XSS exfiltration", "category": "data-leakage"},
     {"id": "glitch", "label": "Glitch tokens", "category": "other"},
     {"id": "snowball", "label": "Snowballed hallucination", "category": "other"},
     {"id": "packagehallucination", "label": "Package hallucination", "category": "other"},
@@ -38,7 +38,7 @@ def build_generator_options(target: Target, out: Path) -> tuple[str, str, Option
     if target.type == "anthropic":
         # garak's litellm generator reaches Anthropic
         return "litellm", f"anthropic/{target.model}", None
-    # HTTP: configure garak's rest generator
+    # HTTP or demo: configure garak's rest generator
     h = target.http
     assert h
     spec = {

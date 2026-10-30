@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 
 const TARGET_TYPES = [
+  { id: "demo", label: "Demo target (no API key)" },
   { id: "openai", label: "OpenAI / compatible" },
   { id: "anthropic", label: "Anthropic" },
   { id: "ollama", label: "Ollama (local)" },
@@ -63,8 +64,10 @@ export default function NewCampaign() {
   async function submit(e) {
     e.preventDefault();
     setErr("");
-    const t = { ...target };
-    if (target.type === "http") {
+    let t = { ...target };
+    if (target.type === "demo") {
+      t = { type: "demo" }; // backend fills the built-in target
+    } else if (target.type === "http") {
       try {
         t.http = {
           url: http.url, method: http.method,
@@ -102,11 +105,25 @@ export default function NewCampaign() {
         <h2 className="font-bold">2 · Target</h2>
         <div className="flex flex-wrap gap-2">
           {TARGET_TYPES.map((tt) => (
-            <button type="button" key={tt.id} onClick={() => setTarget({ ...target, type: tt.id })}
+            <button type="button" key={tt.id} onClick={() => {
+              setTarget({ ...target, type: tt.id });
+              // Make the demo "just work": preselect garak's deterministic probes (no API key)
+              if (tt.id === "demo") {
+                setTools((t) => ({ ...t, promptfoo: false, garak: true, pyrit: false, inspect: false,
+                  garak_probes: t.garak_probes.length ? t.garak_probes
+                    : ["promptinject", "web_injection"] }));
+              }
+            }}
               className={`tab border ${target.type === tt.id ? "tab-active" : "border-slate-200"}`}>{tt.label}</button>
           ))}
         </div>
-        {target.type !== "http" ? (
+        {target.type === "demo" ? (
+          <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm">
+            A built-in, deliberately-vulnerable chatbot. Needs no API key or setup — ideal for a
+            first run. Pair it with <b>garak</b> probes below (promptinject, leakreplay,
+            web_injection, encoding) to get findings without a grading model.
+          </div>
+        ) : target.type !== "http" ? (
           <div className="grid sm:grid-cols-2 gap-4">
             <div><label className="label">Model</label>
               <input className="input" value={target.model} onChange={(e) => setTarget({ ...target, model: e.target.value })} required /></div>

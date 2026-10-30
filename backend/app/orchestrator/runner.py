@@ -302,8 +302,10 @@ def _save_findings(campaign_id: int, findings: list[dict[str, Any]]) -> None:
     if not findings:
         return
     with Session(engine) as s:
+        campaign = s.get(Campaign, campaign_id)
+        company_id = campaign.company_id if campaign else None
         for f in findings:
-            s.add(Finding(campaign_id=campaign_id, **f))
+            s.add(Finding(campaign_id=campaign_id, company_id=company_id, **f))
         s.commit()
 
 

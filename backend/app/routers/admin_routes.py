@@ -31,6 +31,8 @@ def _slug(name: str) -> str:
 def list_companies(admin: User = Depends(global_admin), session: Session = Depends(get_session)):
     out = []
     for c in session.exec(select(Company)).all():
+        if c.slug == "__system__":
+            continue  # hidden company that owns global-admin campaigns
         users = len(session.exec(select(User).where(User.company_id == c.id)).all())
         out.append({"id": c.id, "name": c.name, "slug": c.slug, "disabled": c.disabled,
                     "users": users, "max_users": c.max_users,
@@ -200,8 +202,17 @@ def smtp_put(body: SmtpIn, admin: User = Depends(global_admin)):
 
 @router.post("/smtp/test")
 def smtp_test(to: str, admin: User = Depends(global_admin)):
-    return send_email(to, "Xyberah SMTP test",
-                      "<p>This is a test email from Xyberah. SMTP is working.</p>")
+    try:
+        r = send_email(to, "Xyberah SMTP test",
+                       "<p>This is a test email from Xyberah. SMTP is working.</p>")
+        if r.get("delivered") == "smtp":
+            return {"ok": True, "delivered": "smtp", "message": f"Test email sent to {to} via SMTP."}
+        return {"ok": True, "delivered": "outbox", "message":
+                f"SMTP is not configured, so the test was written to the server outbox "
+                f"({r.get('file', '')}). Configure SMTP above to send real email."}
+    except Exception as exc:
+        return {"ok": False, "delivered": "failed",
+                "message": f"Sending failed: {type(exc).__name__}: {exc}"}
 
 
 def _send_invite(email: str, link: str, inviter: str) -> dict:

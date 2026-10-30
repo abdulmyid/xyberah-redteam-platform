@@ -13,7 +13,7 @@ from ..auth import (clear_session_cookie, current_user, hash_password, mfa_token
 from ..db import get_session
 from ..email_service import send_email
 from ..models import Invite, Role, User, utcnow
-from ..schemas import (AcceptInviteIn, LoginIn, MfaVerifyIn, PasswordChangeIn, TotpEnableIn)
+from ..schemas import (AcceptInviteIn, LoginIn, MfaVerifyIn, PasswordChangeIn, SetupIn, TotpEnableIn)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -22,6 +22,31 @@ def _public_user(u: User) -> dict:
     return {"id": u.id, "email": u.email, "username": u.username, "role": u.role,
             "company_id": u.company_id, "totp_enabled": u.totp_enabled,
             "email_otp_enabled": u.email_otp_enabled}
+
+
+# ---- first-run setup ------------------------------------------------------- #
+@router.get("/setup-status")
+def setup_status(session: Session = Depends(get_session)):
+    """Public. True only before the first (global admin) account exists."""
+    exists = session.exec(select(User)).first() is not None
+    return {"needs_setup": not exists}
+
+
+@router.post("/setup", status_code=201)
+def setup(body: SetupIn, response: Response, session: Session = Depends(get_session)):
+    """Create the first global admin. Works ONLY while no users exist, so it
+    cannot be used to seize an initialized instance."""
+    if session.exec(select(User)).first() is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Setup has already been completed")
+    validate_new_password(body.password)
+    user = User(email=body.email, username=body.username or body.email,
+                company_id=None, role=Role.global_admin,
+                password_hash=hash_password(body.password), last_login=utcnow())
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    set_session_cookie(response, user)  # auto sign-in
+    return {"user": _public_user(user)}
 
 
 @router.post("/login")
