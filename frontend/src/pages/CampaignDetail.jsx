@@ -57,7 +57,9 @@ export default function CampaignDetail() {
   const running = ["running", "queued", "stopping"].includes(c.status);
   const canRun = atLeast(user.role, "analyst");
   const catData = Object.entries(s.by_category || {}).map(([k, v]) => ({ name: k, failed: v.failed, total: v.total }));
-  const owaspData = Object.entries(s.by_owasp || {}).map(([k, v]) => ({ name: k, failed: v.failed, total: v.total }));
+  const frameworks = s.by_framework || {};
+  const fwNames = Object.keys(frameworks);
+  const fwData = (name) => Object.entries(frameworks[name] || {}).map(([k, v]) => ({ name: k, failed: v.failed, total: v.total }));
   const attacks = s.attack_methods || [];
 
   return (
@@ -133,20 +135,7 @@ export default function CampaignDetail() {
               </div>
             ))}
           </div>
-          {owaspData.length > 0 && (
-            <div className="card p-4">
-              <div className="text-sm font-semibold mb-2">OWASP LLM Top 10</div>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={owaspData} layout="vertical" margin={{ left: 20 }}>
-                  <XAxis type="number" hide /><YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 10 }} />
-                  <Tooltip />
-                  <Bar dataKey="failed" radius={4}>
-                    {owaspData.map((_, i) => <Cell key={i} fill="var(--brand-primary)" />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          {fwNames.length > 0 && <FrameworkChart frameworks={frameworks} />}
           {catData.length > 0 && (
             <div className="card p-4">
               <div className="text-sm font-semibold mb-2">Failures by category</div>
@@ -208,6 +197,29 @@ export default function CampaignDetail() {
         </div>
         <FindingsTable findings={findings} />
       </div>
+    </div>
+  );
+}
+
+function FrameworkChart({ frameworks }) {
+  const names = Object.keys(frameworks);
+  const [sel, setSel] = useState(names[0]);
+  const data = Object.entries(frameworks[sel] || {}).map(([k, v]) => ({ name: k, failed: v.failed, total: v.total }));
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold">Framework compliance</div>
+        <select className="input w-auto py-1 text-xs" value={sel} onChange={(e) => setSel(e.target.value)}>
+          {names.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </div>
+      <ResponsiveContainer width="100%" height={210}>
+        <BarChart data={data} layout="vertical" margin={{ left: 20 }}>
+          <XAxis type="number" hide /><YAxis type="category" dataKey="name" width={180} tick={{ fontSize: 10 }} />
+          <Tooltip />
+          <Bar dataKey="failed" radius={4}>{data.map((_, i) => <Cell key={i} fill="var(--brand-primary)" />)}</Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }

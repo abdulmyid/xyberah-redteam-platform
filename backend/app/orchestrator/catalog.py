@@ -131,3 +131,61 @@ def owasp_bucket(plugin_id: str) -> str:
     if "harmful" in pid or "toxic" in pid or "malware" in pid or "lmrc" in pid or "realtoxicity" in pid:
         return "Harmful / Toxic Content"
     return "Other"
+
+
+# Additional framework mappings (plugin id substring -> bucket), for compliance views.
+NIST_AI_RMF = {
+    "Secure & Resilient": ("injection", "hijack", "jailbreak", "dan", "tap", "suffix", "crescendo",
+                           "shell", "sql", "ssrf", "rbac", "bola", "bfla", "ascii-smuggling",
+                           "encoding", "promptinject", "skeleton", "pyrit:", "goodside"),
+    "Privacy-Enhanced": ("pii", "prompt-extraction", "leak", "exfil", "cross-session", "replay"),
+    "Safe": ("harmful", "toxic", "malware", "self-harm", "hate", "violent", "lmrc", "realtoxicity",
+             "cybercrime", "weapons"),
+    "Valid & Reliable": ("hallucination", "overreliance", "misleading", "snowball", "unverifiable",
+                         "packagehallucination"),
+    "Fair - Bias Managed": ("bias", "politics", "religion", "imitation", "competitors"),
+}
+
+MITRE_ATLAS = {
+    "AML.T0051 Prompt Injection": ("injection", "hijack", "promptinject", "latentinjection",
+                                   "system-prompt-override", "pliny"),
+    "AML.T0054 Jailbreak / Evade": ("jailbreak", "dan", "tap", "suffix", "crescendo", "skeleton",
+                                    "grandma", "goodside", "pyrit:"),
+    "AML.T0057 Data Exfiltration": ("pii", "leak", "exfil", "prompt-extraction", "cross-session",
+                                    "replay", "web_injection"),
+    "AML.T0040 ML Attack Staging": ("encoding", "ascii-smuggling", "base64", "rot13", "homoglyph"),
+    "AML.T0013 Discovery": ("tool-discovery", "debug-access", "model-identification", "mcp"),
+    "AML.T0048 Impact / Harm": ("harmful", "toxic", "malware", "self-harm", "hate", "lmrc", "realtoxicity"),
+}
+
+EU_AI_ACT = {
+    "Prohibited / Harmful (Art.5)": ("harmful", "toxic", "self-harm", "hate", "violent", "malware",
+                                     "cybercrime", "weapons", "lmrc", "realtoxicity"),
+    "Transparency (Art.50)": ("hallucination", "overreliance", "imitation", "competitors", "misleading"),
+    "Data Governance (Art.10)": ("pii", "leak", "exfil", "prompt-extraction", "cross-session", "replay"),
+    "Robustness & Security (Art.15)": ("injection", "hijack", "jailbreak", "dan", "tap", "crescendo",
+                                       "shell", "sql", "ssrf", "rbac", "bola", "encoding", "pyrit:"),
+    "Non-discrimination (Art.10)": ("bias", "politics", "religion"),
+}
+
+FRAMEWORKS = {
+    "OWASP LLM Top 10": OWASP_LLM,
+    "NIST AI RMF": NIST_AI_RMF,
+    "MITRE ATLAS": MITRE_ATLAS,
+    "EU AI Act": EU_AI_ACT,
+}
+
+
+def _bucket(mapping: dict, plugin_id: str, fallback: str = "Other") -> str:
+    pid = plugin_id.lower()
+    for bucket, needles in mapping.items():
+        if any(n in pid for n in needles):
+            return bucket
+    if any(h in pid for h in ("harmful", "toxic", "malware", "lmrc", "realtoxicity")):
+        return "Harmful / Toxic Content"
+    return fallback
+
+
+def framework_breakdown(plugin_id: str) -> dict:
+    """{framework name: bucket} for every supported framework."""
+    return {name: _bucket(mapping, plugin_id) for name, mapping in FRAMEWORKS.items()}

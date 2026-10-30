@@ -99,8 +99,10 @@
     {% endfor %}
   </div>
 
-  <h2>OWASP LLM Top 10</h2>
-  {{ owasp_svg | safe }}
+  {% for fw, svg in framework_svgs.items() %}
+  <h2>{{ fw }}</h2>
+  {{ svg | safe }}
+  {% endfor %}
 
   <h2>By risk category</h2>
   {{ category_svg | safe }}
@@ -127,6 +129,20 @@
     </tbody>
   </table>
   {% else %}<p class="muted">No attacks run.</p>{% endif %}
+
+  {% if s.strategy_methods and s.strategy_methods|length > 1 %}
+  <h2>By strategy</h2>
+  <table>
+    <thead><tr><th>Strategy</th><th>Succeeded</th><th style="width:40%">Success rate</th></tr></thead>
+    <tbody>
+    {% for a in s.strategy_methods %}
+      <tr><td><code>{{ a.attack }}</code></td><td>{{ a.succeeded }}/{{ a.total }}</td>
+        <td><div class="bar"><span style="width:{{ a.rate }}%; background:{{ '#dc2626' if a.rate >= 50 else '#d97706' if a.rate > 0 else '#16a34a' }}"></span></div>
+          <span class="muted" style="font-size:11px">{{ a.rate }}%</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 
   <h2>Top findings</h2>
   {% if s.top_failures %}
