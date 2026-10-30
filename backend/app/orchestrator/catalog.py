@@ -2,17 +2,55 @@
 
 # Promptfoo red-team plugins grouped for the UI (ids as accepted by Promptfoo 0.124)
 PROMPTFOO_PLUGINS: dict[str, list[dict[str, str]]] = {
-    "Prompt injection": [
+    "Prompt injection & jailbreak": [
         {"id": "indirect-prompt-injection", "label": "Indirect prompt injection"},
         {"id": "hijacking", "label": "Goal hijacking"},
         {"id": "system-prompt-override", "label": "System prompt override"},
         {"id": "ascii-smuggling", "label": "ASCII smuggling"},
-    ],
-    "Data leakage": [
+        {"id": "special-token-injection", "label": "Special-token injection"},
+        {"id": "cca", "label": "Context compliance attack"},
         {"id": "prompt-extraction", "label": "System prompt extraction"},
+    ],
+    "Jailbreak & safety datasets": [
+        {"id": "pliny", "label": "Pliny jailbreaks"},
+        {"id": "beavertails", "label": "BeaverTails"},
+        {"id": "harmbench", "label": "HarmBench"},
+        {"id": "donotanswer", "label": "DoNotAnswer"},
+        {"id": "cyberseceval", "label": "CyberSecEval"},
+        {"id": "toxic-chat", "label": "ToxicChat"},
+        {"id": "xstest", "label": "XSTest"},
+        {"id": "aegis", "label": "Aegis"},
+        {"id": "unsafebench", "label": "UnsafeBench"},
+        {"id": "wordplay", "label": "Wordplay"},
+    ],
+    "Data & privacy": [
         {"id": "pii", "label": "PII leakage (all)"},
+        {"id": "pii:direct", "label": "PII - direct"},
+        {"id": "pii:api-db", "label": "PII - API/DB"},
+        {"id": "pii:session", "label": "PII - session"},
+        {"id": "pii:social", "label": "PII - social engineering"},
         {"id": "cross-session-leak", "label": "Cross-session leak"},
+        {"id": "data-exfil", "label": "Data exfiltration"},
         {"id": "rag-document-exfiltration", "label": "RAG document exfiltration"},
+        {"id": "rag-source-attribution", "label": "RAG source attribution"},
+    ],
+    "Security & access control": [
+        {"id": "bfla", "label": "Function-level authorization (BFLA)"},
+        {"id": "bola", "label": "Object-level authorization (BOLA)"},
+        {"id": "rbac", "label": "Role-based access control"},
+        {"id": "debug-access", "label": "Debug interface access"},
+        {"id": "shell-injection", "label": "Shell injection"},
+        {"id": "sql-injection", "label": "SQL injection"},
+        {"id": "ssrf", "label": "SSRF"},
+        {"id": "tool-discovery", "label": "Tool discovery"},
+    ],
+    "Agentic & tools": [
+        {"id": "excessive-agency", "label": "Excessive agency"},
+        {"id": "mcp", "label": "MCP tool exploits"},
+        {"id": "model-identification", "label": "Model identification"},
+        {"id": "divergent-repetition", "label": "Divergent repetition (DoS)"},
+        {"id": "reasoning-dos", "label": "Reasoning DoS"},
+        {"id": "goal-misalignment", "label": "Goal misalignment"},
     ],
     "Harmful content": [
         {"id": "harmful", "label": "Harmful content (all categories)"},
@@ -20,32 +58,73 @@ PROMPTFOO_PLUGINS: dict[str, list[dict[str, str]]] = {
         {"id": "harmful:self-harm", "label": "Self-harm"},
         {"id": "harmful:cybercrime", "label": "Cybercrime"},
         {"id": "harmful:misinformation-disinformation", "label": "Misinformation"},
-    ],
-    "Security & access": [
-        {"id": "excessive-agency", "label": "Excessive agency"},
-        {"id": "rbac", "label": "Role-based access control"},
-        {"id": "bola", "label": "Object-level authorization (BOLA)"},
-        {"id": "shell-injection", "label": "Shell injection"},
-        {"id": "sql-injection", "label": "SQL injection"},
-        {"id": "ssrf", "label": "SSRF"},
+        {"id": "harmful:violent-crime", "label": "Violent crime"},
+        {"id": "harmful:non-violent-crime", "label": "Non-violent crime"},
+        {"id": "harmful:sex-crime", "label": "Sex crime"},
+        {"id": "harmful:child-exploitation", "label": "Child exploitation"},
+        {"id": "harmful:chemical-biological-weapons", "label": "Chem/bio weapons"},
+        {"id": "harmful:indiscriminate-weapons", "label": "Indiscriminate weapons"},
+        {"id": "harmful:illegal-drugs", "label": "Illegal drugs"},
+        {"id": "harmful:privacy", "label": "Privacy violations"},
+        {"id": "harmful:intellectual-property", "label": "IP violations"},
+        {"id": "harmful:harassment-bullying", "label": "Harassment & bullying"},
+        {"id": "harmful:radicalization", "label": "Radicalization"},
+        {"id": "harmful:unsafe-practices", "label": "Unsafe practices"},
+        {"id": "harmful:graphic-content", "label": "Graphic content"},
+        {"id": "harmful:specialized-advice", "label": "Dangerous advice"},
+        {"id": "harmful:copyright-violations", "label": "Copyright violations"},
+        {"id": "harmful:insults", "label": "Insults"},
+        {"id": "harmful:profanity", "label": "Profanity"},
     ],
     "Brand & reliability": [
         {"id": "hallucination", "label": "Hallucination"},
         {"id": "overreliance", "label": "Overreliance"},
+        {"id": "unverifiable-claims", "label": "Unverifiable claims"},
         {"id": "competitors", "label": "Competitor endorsement"},
+        {"id": "imitation", "label": "Imitation / impersonation"},
         {"id": "politics", "label": "Political statements"},
+        {"id": "religion", "label": "Religious bias"},
+        {"id": "contracts", "label": "Unauthorized commitments"},
+        {"id": "off-topic", "label": "Off-topic / misuse"},
+    ],
+    "Domain & compliance (collections)": [
+        {"id": "medical", "label": "Medical (collection)"},
+        {"id": "financial", "label": "Financial (collection)"},
+        {"id": "pharmacy", "label": "Pharmacy (collection)"},
+        {"id": "insurance", "label": "Insurance (collection)"},
+        {"id": "teen-safety", "label": "Teen safety (collection)"},
+        {"id": "bias", "label": "Bias (collection)"},
+        {"id": "coppa", "label": "COPPA (children's privacy)"},
+        {"id": "ferpa", "label": "FERPA (education records)"},
     ],
 }
 
 PROMPTFOO_STRATEGIES = [
     {"id": "basic", "label": "Basic (plugin prompts as generated)"},
     {"id": "jailbreak", "label": "Iterative jailbreak"},
+    {"id": "jailbreak:tree", "label": "Tree of Attacks (TAP)"},
     {"id": "jailbreak:composite", "label": "Composite jailbreaks"},
-    {"id": "crescendo", "label": "Crescendo (multi-turn)"},
+    {"id": "jailbreak:likert", "label": "Likert-scale jailbreak"},
+    {"id": "jailbreak:meta", "label": "Meta jailbreak"},
+    {"id": "jailbreak:hydra", "label": "Hydra multi-turn"},
+    {"id": "jailbreak:goblin", "label": "Goblin multi-turn"},
+    {"id": "crescendo", "label": "Crescendo (gradual escalation)"},
+    {"id": "goat", "label": "GOAT (agentic multi-turn)"},
+    {"id": "math-prompt", "label": "Math-prompt obfuscation"},
     {"id": "base64", "label": "Base64 encoding"},
-    {"id": "rot13", "label": "ROT13 encoding"},
+    {"id": "hex", "label": "Hex encoding"},
+    {"id": "rot13", "label": "ROT13"},
     {"id": "leetspeak", "label": "Leetspeak"},
-    {"id": "multilingual", "label": "Multilingual"},
+    {"id": "homoglyph", "label": "Homoglyph"},
+    {"id": "morse", "label": "Morse code"},
+    {"id": "piglatin", "label": "Pig Latin"},
+    {"id": "camelcase", "label": "camelCase"},
+    {"id": "emoji", "label": "Emoji smuggling"},
+    {"id": "citation", "label": "Citation framing"},
+    {"id": "prompt-injection", "label": "Prompt-injection wrapper"},
+    {"id": "best-of-n", "label": "Best-of-N"},
+    {"id": "layer", "label": "Layer (chain strategies)"},
+    {"id": "retry", "label": "Retry failed"},
 ]
 
 CATEGORIES = ["prompt-injection", "jailbreak", "data-leakage", "harmful-content", "other"]
@@ -189,3 +268,22 @@ def _bucket(mapping: dict, plugin_id: str, fallback: str = "Other") -> str:
 def framework_breakdown(plugin_id: str) -> dict:
     """{framework name: bucket} for every supported framework."""
     return {name: _bucket(mapping, plugin_id) for name, mapping in FRAMEWORKS.items()}
+
+
+# Remediation guidance per OWASP LLM bucket, for the vulnerability report.
+REMEDIATION = {
+    "LLM01: Prompt Injection": "Separate system and user content; never let untrusted input alter instructions. Use strict input/output validation, instruction-hierarchy prompts, and a guardrail model on inputs and outputs.",
+    "LLM02: Insecure Output Handling": "Treat model output as untrusted. Encode/sanitize before rendering (no raw HTML/markdown execution), and never pass output directly to shells, SQL, eval, or network calls without validation.",
+    "LLM04: Model Denial of Service": "Enforce input length, output token and request-rate limits; add per-user quotas and timeouts; detect and cut off divergent/looping generations.",
+    "LLM06: Sensitive Information Disclosure": "Keep secrets and other users' data out of the context window; apply output PII/secret scrubbing; scope retrieval to the caller; never place secrets in the system prompt.",
+    "LLM07: Insecure Plugin Design": "Enforce least privilege and per-tool authorization; validate tool arguments server-side; require explicit allow-lists for tools and resources.",
+    "LLM08: Excessive Agency": "Require human approval for state-changing or high-impact actions; constrain tools, scopes and spend; default to read-only.",
+    "LLM09: Overreliance": "Add citations and uncertainty signalling; verify facts against trusted sources; label AI output and discourage blind reliance in the UI.",
+    "LLM10: Model Theft": "Rate-limit and monitor for extraction patterns; avoid echoing model/config details; apply auth and watermarking where applicable.",
+    "Harmful / Toxic Content": "Apply a content-safety classifier on inputs and outputs; refuse disallowed categories; tune the system prompt and add a moderation guardrail.",
+    "Other": "Review failed cases individually, add targeted guardrails or prompt constraints, and re-test.",
+}
+
+
+def remediation_for(bucket: str) -> str:
+    return REMEDIATION.get(bucket, REMEDIATION["Other"])

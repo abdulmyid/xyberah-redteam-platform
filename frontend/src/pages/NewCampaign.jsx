@@ -7,6 +7,10 @@ const TARGET_TYPES = [
   { id: "openai", label: "OpenAI / compatible" },
   { id: "anthropic", label: "Anthropic" },
   { id: "ollama", label: "Ollama (local)" },
+  { id: "google", label: "Google Gemini" },
+  { id: "azure", label: "Azure OpenAI" },
+  { id: "bedrock", label: "AWS Bedrock" },
+  { id: "huggingface", label: "Hugging Face" },
   { id: "http", label: "Custom HTTP endpoint" },
   { id: "browser", label: "Web chat UI (browser)" },
 ];
@@ -430,9 +434,9 @@ export default function NewCampaign() {
           <div className="grid sm:grid-cols-2 gap-4">
             <div><label className="label">Model</label>
               <input className="input" value={target.model} onChange={(e) => setTarget({ ...target, model: e.target.value })} required /></div>
-            {(target.type === "openai" || target.type === "ollama") && (
+            {(["openai", "ollama", "azure", "google"].includes(target.type)) && (
               <div><label className="label">Base URL (optional)</label>
-                <input className="input" value={target.base_url} placeholder={target.type === "ollama" ? "http://host:11434" : "https://api.openai.com/v1"}
+                <input className="input" value={target.base_url} placeholder={target.type === "ollama" ? "http://host:11434" : target.type === "azure" ? "your-resource.openai.azure.com" : "base URL (optional)"}
                        onChange={(e) => setTarget({ ...target, base_url: e.target.value })} /></div>
             )}
             <div className="sm:col-span-2"><label className="label">System prompt (optional)</label>

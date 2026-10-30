@@ -144,6 +144,14 @@
   </table>
   {% endif %}
 
+  {% if s.remediation %}
+  <h2>Remediation guidance</h2>
+  {% for r in s.remediation %}
+  <div style="margin-bottom:10px"><b>{{ r.area }}</b> <span class="muted">({{ r.failed }} failing)</span><br/>
+    <span style="font-size:13px">{{ r.advice }}</span></div>
+  {% endfor %}
+  {% endif %}
+
   <h2>Top findings</h2>
   {% if s.top_failures %}
   <table>

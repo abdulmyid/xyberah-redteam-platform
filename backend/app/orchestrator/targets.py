@@ -9,7 +9,9 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-KEY_ENV = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
+KEY_ENV = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
+           "google": "GOOGLE_API_KEY", "azure": "AZURE_API_KEY",
+           "huggingface": "HF_API_TOKEN"}
 
 
 class HttpTarget(BaseModel):
@@ -49,7 +51,8 @@ class BrowserTarget(BaseModel):
 
 
 class Target(BaseModel):
-    type: Literal["openai", "anthropic", "ollama", "http", "demo", "browser"]
+    type: Literal["openai", "anthropic", "ollama", "http", "demo", "browser",
+                  "google", "azure", "bedrock", "huggingface"]
     label: str = ""
     model: str = ""
     base_url: Optional[str] = None  # OpenAI-compatible gateways, Ollama host
@@ -129,6 +132,16 @@ def promptfoo_provider(target: Target) -> dict[str, Any]:
         pid = f"anthropic:messages:{target.model}"
     elif target.type == "ollama":
         pid = f"ollama:chat:{target.model}"
+    elif target.type == "google":
+        pid = f"google:{target.model}"
+    elif target.type == "azure":
+        pid = f"azure:chat:{target.model}"  # model = Azure deployment name
+        if target.base_url:
+            config["apiHost"] = target.base_url  # e.g. your-resource.openai.azure.com
+    elif target.type == "bedrock":
+        pid = f"bedrock:{target.model}"
+    elif target.type == "huggingface":
+        pid = f"huggingface:text-generation:{target.model}"
     else:  # http or demo
         h = target.http
         assert h

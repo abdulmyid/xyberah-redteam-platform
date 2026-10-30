@@ -2,7 +2,7 @@
 from typing import Any
 
 from ..orchestrator.catalog import (FRAMEWORKS, SEVERITY_ORDER, SEVERITY_WEIGHT,
-                                     framework_breakdown)
+                                     framework_breakdown, remediation_for)
 
 
 def summarize(findings: list[dict[str, Any]]) -> dict[str, Any]:
@@ -54,6 +54,7 @@ def summarize(findings: list[dict[str, Any]]) -> dict[str, Any]:
         "by_strategy": by_strategy,
         "attack_methods": _attack_methods(by_plugin),
         "strategy_methods": _attack_methods({k: {**v, "tool": ""} for k, v in by_strategy.items()}),
+        "remediation": _remediation(owasp),
         "top_failures": _top(failed),
     }
 
@@ -84,3 +85,11 @@ def _top(failed: list[dict[str, Any]], limit: int = 25) -> list[dict[str, Any]]:
     order = {s: i for i, s in enumerate(SEVERITY_ORDER)}
     ranked = sorted(failed, key=lambda f: (order.get(f["severity"], 9), -(f.get("score") or 0)))
     return ranked[:limit]
+
+
+def _remediation(owasp: dict[str, dict[str, int]]) -> list[dict[str, Any]]:
+    out = []
+    for bucket, v in sorted(owasp.items()):
+        if v.get("failed"):
+            out.append({"area": bucket, "failed": v["failed"], "advice": remediation_for(bucket)})
+    return out
