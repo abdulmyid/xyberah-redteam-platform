@@ -168,3 +168,17 @@ class BrowserSession(SQLModel, table=True):
     data_enc: str = Field(default="", sa_column=Column(Text))  # Fernet-encrypted storageState JSON
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class SavedTarget(SQLModel, table=True):
+    """A reusable target configuration (e.g. a configured Gemini/HTTP endpoint or a
+    browser chat UI). The config may hold API keys in headers, so it is encrypted
+    at rest and scoped to the company."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    target_type: str = ""  # openai | anthropic | ollama | http | browser
+    config_enc: str = Field(default="", sa_column=Column(Text))  # Fernet-encrypted Target JSON
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)

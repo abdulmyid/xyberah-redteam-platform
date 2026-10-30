@@ -92,6 +92,11 @@ class TargetTestIn(BaseModel):
     prompt: str = ""
 
 
+class SavedTargetIn(BaseModel):
+    name: str = ""
+    target: Target
+
+
 class CampaignIn(BaseModel):
     name: str
     description: str = ""

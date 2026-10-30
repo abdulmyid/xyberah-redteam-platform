@@ -212,6 +212,38 @@ export default function NewCampaign() {
   });
 
   useEffect(() => { api.get("/api/catalog").then(setCatalog); }, []);
+
+  const [savedTargets, setSavedTargets] = useState([]);
+  const [selectedSaved, setSelectedSaved] = useState("");
+  const loadSavedList = () => api.get("/api/targets/saved").then(setSavedTargets).catch(() => {});
+  useEffect(() => { loadSavedList(); }, []);
+
+  async function loadSavedTarget(id) {
+    if (!id) return;
+    try {
+      const { target: cfg } = await api.get(`/api/targets/saved/${id}`);
+      setTarget({ type: cfg.type, model: cfg.model || "", base_url: cfg.base_url || "", system_prompt: cfg.system_prompt || "" });
+      if (cfg.type === "http" && cfg.http) {
+        setHttp({ url: cfg.http.url, method: cfg.http.method, body: JSON.stringify(cfg.http.body, null, 2),
+                  response_path: cfg.http.response_path,
+                  headers: Object.keys(cfg.http.headers || {}).length ? JSON.stringify(cfg.http.headers) : "" });
+      }
+      if (cfg.type === "browser" && cfg.browser) {
+        setBrowser({ ...browser, ...cfg.browser });
+        setNeedsLogin((cfg.browser.setup_steps || []).length > 0);
+      }
+      setTestResult(null);
+    } catch (e) { alert(e.message); }
+  }
+
+  async function saveCurrentTarget() {
+    let t;
+    try { t = buildTarget(); } catch { return alert("Fix the target first (the HTTP body/headers must be valid JSON)."); }
+    const name = window.prompt("Name this saved target:", target.type === "http" ? (http.url || "HTTP target") : target.type);
+    if (!name) return;
+    try { await api.post("/api/targets/saved", { name, target: t }); await loadSavedList(); alert(`Saved “${name}”.`); }
+    catch (e) { alert(e.message); }
+  }
   const up = (patch) => setTools((t) => ({ ...t, ...patch }));
 
   async function submit(e) {
@@ -245,7 +277,19 @@ export default function NewCampaign() {
       </section>
 
       <section className="card p-5 space-y-4">
-        <h2 className="font-bold">2 · Target</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-bold">2 · Target</h2>
+          <div className="flex items-center gap-2">
+            {savedTargets.length > 0 && (
+              <select className="input w-auto py-1 text-sm" value={selectedSaved}
+                      onChange={(e) => { setSelectedSaved(e.target.value); loadSavedTarget(e.target.value); }}>
+                <option value="">Load saved target…</option>
+                {savedTargets.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.type})</option>)}
+              </select>
+            )}
+            <button type="button" className="btn-ghost py-1 text-sm" onClick={saveCurrentTarget}>Save this target</button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
           {TARGET_TYPES.map((tt) => (
             <button type="button" key={tt.id} onClick={() => {

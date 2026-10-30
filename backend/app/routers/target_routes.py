@@ -12,16 +12,67 @@ import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlmodel import Session, select
 
-from ..auth import company_scope, require_role
+import json as _json
+
+from ..auth import assert_same_company, company_scope, require_role
+from ..crypto import decrypt, encrypt
 from ..db import get_session
-from ..models import BrowserSession, Role, User
+from ..models import BrowserSession, Role, SavedTarget, User
 from ..orchestrator import browser_session
 from ..orchestrator.targets import Target, missing_keys
-from ..schemas import TargetTestIn
+from ..schemas import SavedTargetIn, TargetTestIn
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
 
 MAX_SESSION = 2 * 1024 * 1024  # 2 MB storageState
+
+
+# ---- reusable saved targets ------------------------------------------------ #
+@router.get("/saved")
+def list_saved(user: User = Depends(require_role(Role.analyst)),
+               session: Session = Depends(get_session)):
+    scope = company_scope(user)
+    q = select(SavedTarget).order_by(SavedTarget.created_at.desc())
+    if scope is not None:
+        q = q.where(SavedTarget.company_id == scope)
+    return [{"id": r.id, "name": r.name, "type": r.target_type, "created_at": r.created_at}
+            for r in session.exec(q).all()]
+
+
+@router.get("/saved/{saved_id}")
+def get_saved(saved_id: int, user: User = Depends(require_role(Role.analyst)),
+              session: Session = Depends(get_session)):
+    row = session.get(SavedTarget, saved_id)
+    if not row:
+        raise HTTPException(404, "No such saved target")
+    assert_same_company(user, row.company_id) if row.company_id is not None else None
+    return {"id": row.id, "name": row.name, "target": _json.loads(decrypt(row.config_enc))}
+
+
+@router.post("/saved", status_code=201)
+def save_target(body: SavedTargetIn, user: User = Depends(require_role(Role.analyst)),
+                session: Session = Depends(get_session)):
+    row = SavedTarget(company_id=user.company_id, name=body.name or body.target.display,
+                      target_type=body.target.type,
+                      config_enc=encrypt(_json.dumps(body.target.model_dump())),
+                      created_by=user.id)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return {"id": row.id, "name": row.name, "type": row.target_type}
+
+
+@router.delete("/saved/{saved_id}")
+def delete_saved(saved_id: int, user: User = Depends(require_role(Role.analyst)),
+                 session: Session = Depends(get_session)):
+    row = session.get(SavedTarget, saved_id)
+    if not row:
+        raise HTTPException(404, "No such saved target")
+    if user.role != Role.global_admin and row.company_id != user.company_id:
+        raise HTTPException(404, "No such saved target")
+    session.delete(row)
+    session.commit()
+    return {"ok": True}
 
 
 @router.post("/browser-session", status_code=201)
