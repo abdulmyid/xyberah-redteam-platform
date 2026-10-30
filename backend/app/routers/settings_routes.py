@@ -64,7 +64,7 @@ def upload_logo(slot: str, file: UploadFile = File(...),
 @router.get("/catalog")
 def get_catalog(user: User = Depends(current_user)):
     return {
-        "promptfoo": {"plugins": catalog.PROMPTFOO_PLUGINS, "strategies": catalog.PROMPTFOO_STRATEGIES},
+        "promptfoo": {"plugins": catalog.PROMPTFOO_PLUGINS, "strategies": catalog.PROMPTFOO_STRATEGIES, "presets": catalog.PROMPTFOO_PRESETS},
         "garak": {"probes": garak_runner.GARAK_PROBES},
         "pyrit": {"attacks": PYRIT_ATTACKS, "default_objectives": DEFAULT_OBJECTIVES},
         "inspect": {"tasks": INSPECT_TASKS},

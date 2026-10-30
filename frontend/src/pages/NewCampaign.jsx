@@ -527,7 +527,17 @@ export default function NewCampaign() {
 
         {tools.promptfoo && (
           <div className="border-t pt-4 space-y-3">
-            <div className="font-semibold text-sm">Promptfoo plugins</div>
+            <div className="font-semibold text-sm">Templates - one-click plugin sets</div>
+            <div className="flex flex-wrap gap-2">
+              {(catalog.promptfoo.presets || []).map((pr) => (
+                <button type="button" key={pr.id} title={pr.desc}
+                  className="chip border bg-white border-slate-300 hover:bg-violet-50"
+                  onClick={() => up({ promptfoo: true, promptfoo_plugins: pr.plugins })}>
+                  {pr.label} <span className="text-slate-400">({pr.plugins.length})</span>
+                </button>
+              ))}
+            </div>
+            <div className="font-semibold text-sm pt-2">Promptfoo plugins</div>
             {Object.entries(catalog.promptfoo.plugins).map(([group, plugins]) => (
               <div key={group}>
                 <div className="text-xs text-slate-500 mb-1">{group}</div>

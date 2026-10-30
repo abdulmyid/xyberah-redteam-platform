@@ -57,6 +57,8 @@ export default function CampaignDetail() {
   const running = ["running", "queued", "stopping"].includes(c.status);
   const canRun = atLeast(user.role, "analyst");
   const catData = Object.entries(s.by_category || {}).map(([k, v]) => ({ name: k, failed: v.failed, total: v.total }));
+  const owaspData = Object.entries(s.by_owasp || {}).map(([k, v]) => ({ name: k, failed: v.failed, total: v.total }));
+  const attacks = s.attack_methods || [];
 
   return (
     <div className="space-y-6">
@@ -123,6 +125,28 @@ export default function CampaignDetail() {
             <Stat label="Pass rate" value={`${s.pass_rate ?? 100}%`} />
             <Stat label="Critical+High" value={(s.by_severity?.critical || 0) + (s.by_severity?.high || 0)} />
           </div>
+          <div className="grid grid-cols-4 gap-2">
+            {["critical","high","medium","low"].map((lvl) => (
+              <div key={lvl} className={`rounded-lg p-3 text-center sev-${lvl}`}>
+                <div className="text-2xl font-extrabold">{s.by_severity?.[lvl] || 0}</div>
+                <div className="text-xs capitalize">{lvl}</div>
+              </div>
+            ))}
+          </div>
+          {owaspData.length > 0 && (
+            <div className="card p-4">
+              <div className="text-sm font-semibold mb-2">OWASP LLM Top 10</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={owaspData} layout="vertical" margin={{ left: 20 }}>
+                  <XAxis type="number" hide /><YAxis type="category" dataKey="name" width={170} tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Bar dataKey="failed" radius={4}>
+                    {owaspData.map((_, i) => <Cell key={i} fill="var(--brand-primary)" />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
           {catData.length > 0 && (
             <div className="card p-4">
               <div className="text-sm font-semibold mb-2">Failures by category</div>
@@ -147,6 +171,24 @@ export default function CampaignDetail() {
           <div ref={logRef} className="h-56 overflow-auto bg-slate-900 text-slate-100 text-xs font-mono p-3 space-y-0.5">
             {logs.map((l, i) => (
               <div key={i}><span className="text-slate-500">[{l.tool}]</span> {l.line}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Attack methods */}
+      {attacks.length > 0 && (
+        <div className="card p-5">
+          <h2 className="font-bold mb-3">Attack methods</h2>
+          <div className="space-y-2">
+            {attacks.map((a) => (
+              <div key={a.attack} className="flex items-center gap-3 text-sm">
+                <div className="w-64 truncate font-mono text-xs" title={a.attack}>{a.attack}</div>
+                <div className="flex-1 h-2 rounded-full bg-slate-200 overflow-hidden">
+                  <div className="h-full" style={{ width: `${a.rate}%`, background: a.rate >= 50 ? "#dc2626" : a.rate > 0 ? "#d97706" : "#16a34a" }} />
+                </div>
+                <div className="w-28 text-right text-xs text-slate-600">{a.succeeded}/{a.total} ({a.rate}%)</div>
+              </div>
             ))}
           </div>
         </div>

@@ -45,6 +45,16 @@
            color: var(--muted); font-size: 11px; text-align: center; }
   .pill { font-size: 11px; background: var(--card); border: 1px solid var(--line); border-radius: 999px;
           padding: 1px 8px; color: var(--muted); }
+  .sevcards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 8px 0 4px; }
+  .sevcard { border-radius: 10px; padding: 12px; border: 1px solid var(--line); }
+  .sevcard .k { font-size: 24px; font-weight: 800; }
+  .sevcard .l { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  .sevcard.critical { background: #fef2f2; } .sevcard.critical .k { color: #b91c1c; }
+  .sevcard.high { background: #fff7ed; } .sevcard.high .k { color: #ea580c; }
+  .sevcard.medium { background: #fffbeb; } .sevcard.medium .k { color: #d97706; }
+  .sevcard.low { background: #f0fdf4; } .sevcard.low .k { color: #16a34a; }
+  .bar { height: 8px; background: var(--card); border-radius: 999px; overflow: hidden; display: inline-block; width: 85%; vertical-align: middle; }
+  .bar span { display: block; height: 100%; }
   @media print { .wrap { max-width: none; } h2 { page-break-after: avoid; } tr { page-break-inside: avoid; } }
 </style>
 </head>
@@ -79,11 +89,44 @@
     </div>
   </div>
 
+  <h2>Severity</h2>
+  <div class="sevcards">
+    {% for level in ['critical','high','medium','low'] %}
+    <div class="sevcard {{ level }}">
+      <div class="k">{{ s.by_severity.get(level, 0) }}</div>
+      <div class="l">{{ level|capitalize }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <h2>OWASP LLM Top 10</h2>
+  {{ owasp_svg | safe }}
+
   <h2>By risk category</h2>
   {{ category_svg | safe }}
 
   <h2>By tool</h2>
   {{ tool_svg | safe }}
+
+  <h2>Attack methods</h2>
+  {% if s.attack_methods %}
+  <table>
+    <thead><tr><th>Attack</th><th>Tool</th><th>Succeeded</th><th style="width:40%">Success rate</th></tr></thead>
+    <tbody>
+    {% for a in s.attack_methods %}
+      <tr>
+        <td><code>{{ a.attack }}</code></td>
+        <td>{{ a.tool }}</td>
+        <td>{{ a.succeeded }}/{{ a.total }}</td>
+        <td>
+          <div class="bar"><span style="width:{{ a.rate }}%; background:{{ '#dc2626' if a.rate >= 50 else '#d97706' if a.rate > 0 else '#16a34a' }}"></span></div>
+          <span class="muted" style="font-size:11px">{{ a.rate }}%</span>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No attacks run.</p>{% endif %}
 
   <h2>Top findings</h2>
   {% if s.top_failures %}

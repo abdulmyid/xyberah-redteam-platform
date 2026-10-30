@@ -41,6 +41,7 @@ def render_html(campaign: Any, findings: list[dict], tools_used: list[str], targ
     s = summarize(findings)
     cat_rows = [(c, v["failed"], v["total"]) for c, v in sorted(s["by_category"].items())]
     tool_rows = [(t, v["failed"], v["total"]) for t, v in sorted(s["by_tool"].items())]
+    owasp_rows = [(o, v["failed"], v["total"]) for o, v in sorted(s.get("by_owasp", {}).items())]
     started = campaign.started_at.strftime("%Y-%m-%d %H:%M UTC") if campaign.started_at else "—"
     return _env.get_template("report.html.j2").render(
         b=branding, campaign=campaign, s=s,
@@ -49,6 +50,7 @@ def render_html(campaign: Any, findings: list[dict], tools_used: list[str], targ
         logo_data=_logo_data_uri(branding),
         donut_svg=charts.donut(s["passed"], s["failed"]),
         severity_svg=charts.severity_bar(s["by_severity"]),
+        owasp_svg=charts.bars(owasp_rows),
         category_svg=charts.bars(cat_rows),
         tool_svg=charts.bars(tool_rows),
     )
