@@ -439,6 +439,21 @@ export default function NewCampaign() {
                 {testResult.reply && <div className="mt-1">Extracted reply: <span className="font-mono">{testResult.reply}</span></div>}
                 {testResult.error && <div className="mt-1">{testResult.error}</div>}
                 {testResult.extract_error && <div className="mt-1">{testResult.extract_error}</div>}
+                {testResult.suggested_paths?.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium">Response path — click to use:</div>
+                    <div className="mt-1 flex flex-col gap-1">
+                      {testResult.suggested_paths.map((s) => (
+                        <button type="button" key={s.path}
+                          className="text-left text-xs rounded border border-slate-300 bg-white px-2 py-1 hover:bg-slate-50"
+                          onClick={() => { setHttp((prev) => ({ ...prev, response_path: s.path })); setTimeout(testConnection, 0); }}>
+                          <span className="font-mono text-slate-800">{s.path}</span>
+                          <span className="text-slate-500"> — “{s.preview}”</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {testResult.tls_note && <div className="mt-1 text-amber-700">{testResult.tls_note}</div>}
                 {testResult.raw && !testResult.reply && (
                   <details className="mt-1"><summary className="cursor-pointer">Raw response</summary>

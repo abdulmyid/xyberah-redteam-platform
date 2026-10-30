@@ -118,14 +118,48 @@ def test_target(body: TargetTestIn, user: User = Depends(require_role(Role.analy
     if result.get("json") is not None and result.get("ok"):
         try:
             reply = _extract(result["json"], h.response_path)
+            if isinstance(reply, (dict, list)):
+                raise ValueError("path points at an object, not text")
             result["reply"] = str(reply)[:1000]
         except Exception:
             result["ok"] = False
             result["extract_error"] = (
-                f"Reached the endpoint, but could not read the reply at '{h.response_path}'. "
-                f"Check the 'Response JSON path' against the raw response below.")
+                f"Reached the endpoint (HTTP 200), but '{h.response_path}' is not the reply. "
+                f"Pick the right field below — the reply is usually the longest text value.")
+            result["suggested_paths"] = _suggest_paths(result["json"])
     result.pop("json", None)
     return result
+
+
+def _suggest_paths(data: Any, max_results: int = 5) -> list[dict]:
+    """Scan a JSON response and rank the most likely 'reply' fields by field name
+    and text length, so the UI can auto-fill the response path."""
+    PREFERRED = ("text", "content", "message", "output", "reply", "answer",
+                 "response", "generated_text", "result", "completion")
+    leaves: list[tuple[str, str]] = []
+
+    def walk(o: Any, path: str) -> None:
+        if isinstance(o, str):
+            if o.strip():
+                leaves.append((path, o))
+        elif isinstance(o, list):
+            for i, v in enumerate(o):
+                walk(v, f"{path}.{i}" if path else str(i))
+        elif isinstance(o, dict):
+            for k, v in o.items():
+                walk(v, f"{path}.{k}" if path else k)
+
+    walk(data, "")
+    leaves.sort(key=lambda it: (0 if it[0].split(".")[-1].lower() in PREFERRED else 1, -len(it[1])))
+    out, seen = [], set()
+    for path, val in leaves:
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append({"path": path, "preview": val[:80]})
+        if len(out) >= max_results:
+            break
+    return out
 
 
 def _test_browser(target: Target, prompt: str, company_id) -> dict:
