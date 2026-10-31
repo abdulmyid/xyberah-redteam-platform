@@ -88,7 +88,10 @@ class ImportPluginIn(BaseModel):
 @router.post("/import-plugin")
 def import_plugin(body: ImportPluginIn, user: User = Depends(require_role(Role.analyst))):
     from .. import plugin_library
-    res = plugin_library.get_prompts(body.source_id)
+    try:
+        res = plugin_library.get_prompts(body.source_id)
+    except Exception as exc:  # e.g. a dataset pack fetch failing (offline)
+        raise HTTPException(502, f"Could not fetch that source: {str(exc)[:200]}")
     if not res:
         raise HTTPException(404, "No such plugin source")
     return res

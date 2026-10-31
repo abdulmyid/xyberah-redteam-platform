@@ -135,7 +135,8 @@ def _garak_sources() -> dict[str, dict[str, Any]]:
 # public API
 # --------------------------------------------------------------------------- #
 def list_sources() -> list[dict[str, Any]]:
-    rows = []
+    from . import datasetpacks
+    rows = list(datasetpacks.sources())
     for provider, src in (("pyrit", _pyrit_sources()), ("garak", _garak_sources())):
         for sid, meta in src.items():
             rows.append({"id": sid, "provider": provider, "name": meta["name"],
@@ -145,6 +146,15 @@ def list_sources() -> list[dict[str, Any]]:
 
 
 def get_prompts(source_id: str) -> dict[str, Any] | None:
+    if source_id.startswith("dataset::"):
+        from . import datasetpacks
+        pack_id = source_id.split("::", 1)[1]
+        p = datasetpacks.PACKS.get(pack_id)
+        if not p:
+            return None
+        prompts = list(datasetpacks.fetch(pack_id))  # may raise on network error
+        return {"provider": "dataset", "name": p["name"], "source": p["source"],
+                "desc": p["desc"], "prompts": prompts}
     src = _pyrit_sources() if source_id.startswith("pyrit::") else _garak_sources()
     meta = src.get(source_id)
     if not meta:
