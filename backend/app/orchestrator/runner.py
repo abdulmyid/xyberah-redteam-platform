@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from ..config import get_settings
 from ..db import engine
@@ -30,6 +30,24 @@ _stop_flags: dict[int, threading.Event] = {}
 def is_running(campaign_id: int) -> bool:
     t = _threads.get(campaign_id)
     return bool(t and t.is_alive())
+
+
+def recover_interrupted() -> int:
+    """On startup, campaigns left 'running'/'queued' by a previous process are no
+    longer executing (their threads died with the old process). Mark them failed so
+    they are not stuck and can be restarted. Returns how many were recovered."""
+    from ..models import Campaign, utcnow
+    with Session(engine) as s:
+        rows = s.exec(select(Campaign).where(Campaign.status.in_(("running", "queued")))).all()
+        for c in rows:
+            c.status = "failed"
+            c.error = "Interrupted by a server restart — start it again to re-run."
+            c.finished_at = c.finished_at or utcnow()
+            c.pause_requested = False
+            s.add(c)
+        if rows:
+            s.commit()
+        return len(rows)
 
 
 def request_pause(campaign_id: int) -> None:

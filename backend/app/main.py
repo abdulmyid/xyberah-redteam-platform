@@ -75,6 +75,10 @@ def _startup() -> None:
             bootstrap_global_admin(session)
         except RuntimeError as exc:
             log.warning("Admin bootstrap skipped: %s", exc)
+    from .orchestrator import runner
+    recovered = runner.recover_interrupted()
+    if recovered:
+        log.warning("Recovered %d campaign(s) interrupted by a restart", recovered)
     start_scheduler()
     log.info("Xyberah backend ready")
 
