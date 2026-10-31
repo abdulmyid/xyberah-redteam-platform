@@ -124,27 +124,47 @@ async def parse_upload(file: UploadFile = File(...), user: User = Depends(requir
     except UnicodeDecodeError:
         text = raw.decode("latin-1", errors="replace")
     name = (file.filename or "").lower()
+    from .. import traffic
 
-    if name.endswith(".json"):
-        prompts = _from_json(text)
-    elif name.endswith(".csv") or name.endswith(".tsv"):
+    if name.endswith((".jsonl", ".ndjson")):
+        prompts = traffic.extract_jsonl(text)
+    elif name.endswith(".json"):
+        prompts = _parse_json_any(text, traffic)
+    elif name.endswith((".csv", ".tsv")):
         prompts = _from_csv(text, delimiter="\t" if name.endswith(".tsv") else ",")
     else:
-        # try JSON first (content-sniff), fall back to line-per-prompt
+        # content-sniff: OTLP/JSON, JSONL, else line-per-prompt
         prompts = None
         stripped = text.lstrip()
-        if stripped[:1] in "[{":
+        if stripped[:1] == "{" and '"resourceSpans"' in text:
+            prompts = traffic.extract_otlp(json.loads(text))
+        elif stripped[:1] in "[{":
             try:
-                prompts = _from_json(text)
+                prompts = _parse_json_any(text, traffic)
             except Exception:
                 prompts = None
+        elif "\n" in text and stripped[:1] in "{[":
+            prompts = traffic.extract_jsonl(text)
         if prompts is None:
             prompts = [ln for ln in (l.strip() for l in text.splitlines()) if ln]
 
-    prompts = _clean_prompts(prompts)
+    prompts = traffic.dedupe(_clean_prompts(prompts))
     if not prompts:
         raise HTTPException(422, "No prompts found in that file")
     return {"prompts": prompts, "count": len(prompts)}
+
+
+def _parse_json_any(text: str, traffic) -> list[str]:
+    """A .json upload: OTLP trace, array of records/strings, or {prompts:[...]}."""
+    data = json.loads(text)
+    if isinstance(data, dict) and "resourceSpans" in data:
+        return traffic.extract_otlp(data)
+    if isinstance(data, dict):
+        data = data.get("prompts") or data.get("tests") or data.get("data") or [data]
+    out: list[str] = []
+    for item in data if isinstance(data, list) else []:
+        out += traffic.extract_record(item)
+    return out or _from_json(text)
 
 
 # --------------------------------------------------------------------------- #
