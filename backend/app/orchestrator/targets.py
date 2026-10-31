@@ -34,6 +34,22 @@ class BrowserStep(BaseModel):
     ms: int = 0
 
 
+class McpServer(BaseModel):
+    """A remote MCP server the agent-under-test can call (HTTP/SSE transport)."""
+
+    url: str
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class McpTarget(BaseModel):
+    """An LLM agent wired to one or more MCP servers. Red-team plugins then test
+    whether the agent misuses its tools (excessive agency, injection via tool
+    results, unauthorized actions, etc.)."""
+
+    base_provider: str = "openai"  # openai | anthropic | google | azure | ollama | bedrock
+    servers: list[McpServer] = Field(default_factory=list)
+
+
 class BrowserTarget(BaseModel):
     """A model reachable only through a web chat UI, driven by the Playwright
     bridge (engine/providers/automated_chat_bridge.js)."""
@@ -52,13 +68,14 @@ class BrowserTarget(BaseModel):
 
 class Target(BaseModel):
     type: Literal["openai", "anthropic", "ollama", "http", "demo", "browser",
-                  "google", "azure", "bedrock", "huggingface"]
+                  "google", "azure", "bedrock", "huggingface", "mcp"]
     label: str = ""
     model: str = ""
     base_url: Optional[str] = None  # OpenAI-compatible gateways, Ollama host
     system_prompt: str = ""
     http: Optional[HttpTarget] = None
     browser: Optional[BrowserTarget] = None
+    mcp: Optional[McpTarget] = None
 
     @model_validator(mode="after")
     def _check(self) -> "Target":
@@ -71,7 +88,12 @@ class Target(BaseModel):
             raise ValueError("http target needs http settings")
         if self.type == "browser" and not self.browser:
             raise ValueError("browser target needs browser settings")
-        if self.type not in ("http", "demo", "browser") and not self.model:
+        if self.type == "mcp":
+            if not self.mcp or not self.mcp.servers:
+                raise ValueError("mcp target needs at least one MCP server")
+            if not self.model:
+                raise ValueError("mcp target needs a base model")
+        elif self.type not in ("http", "demo", "browser") and not self.model:
             raise ValueError("model is required")
         return self
 
@@ -87,13 +109,16 @@ class Target(BaseModel):
             return "Built-in demo target"
         if self.type == "browser" and self.browser:
             return f"browser: {self.browser.url}"
+        if self.type == "mcp" and self.mcp:
+            return f"mcp agent ({self.mcp.base_provider}:{self.model}, {len(self.mcp.servers)} server(s))"
         return self.http.url if self.is_http_like and self.http else f"{self.type}:{self.model}"
 
 
 def missing_keys(target: Target) -> list[str]:
     if target.type in ("demo", "browser"):
         return []
-    env = KEY_ENV.get(target.type)
+    kind = target.mcp.base_provider if target.type == "mcp" and target.mcp else target.type
+    env = KEY_ENV.get(kind)
     return [env] if env and not os.getenv(env) else []
 
 
@@ -102,9 +127,43 @@ def _js_path(path: str) -> str:
     return "json" + "".join(f"[{p}]" if p.isdigit() else f"[{p!r}]" for p in parts)
 
 
+def _model_pid(kind: str, model: str, base_url: Optional[str]) -> tuple[str, dict[str, Any]]:
+    """(provider id, config) for a standard model provider kind."""
+    config: dict[str, Any] = {}
+    if kind == "openai":
+        pid = f"openai:chat:{model}"
+        if base_url:
+            config["apiBaseUrl"] = base_url
+    elif kind == "anthropic":
+        pid = f"anthropic:messages:{model}"
+    elif kind == "ollama":
+        pid = f"ollama:chat:{model}"
+    elif kind == "google":
+        pid = f"google:{model}"
+    elif kind == "azure":
+        pid = f"azure:chat:{model}"
+        if base_url:
+            config["apiHost"] = base_url
+    elif kind == "bedrock":
+        pid = f"bedrock:{model}"
+    elif kind == "huggingface":
+        pid = f"huggingface:text-generation:{model}"
+    else:
+        pid = f"{kind}:{model}"
+    return pid, config
+
+
 def promptfoo_provider(target: Target) -> dict[str, Any]:
     """Provider entry for promptfooconfig.yaml `targets:`."""
     config: dict[str, Any] = {}
+    if target.type == "mcp":
+        m = target.mcp
+        assert m
+        pid, config = _model_pid(m.base_provider, target.model, target.base_url)
+        config["mcp"] = {"enabled": True,
+                         "servers": [{"url": sv.url, **({"headers": sv.headers} if sv.headers else {})}
+                                     for sv in m.servers]}
+        return {"id": pid, "label": target.display, "config": config}
     if target.type == "browser":
         from ..config import get_settings
         b = target.browser

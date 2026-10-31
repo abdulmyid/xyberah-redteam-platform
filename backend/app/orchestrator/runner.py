@@ -172,6 +172,7 @@ def _run_promptfoo(campaign_id, target, tools, out: Path, stop) -> list[dict]:
         strategies=tools.get("promptfoo_strategies", ["basic"]),
         num_tests=int(tools.get("num_tests", 5)), workdir=out,
         browser_session_path=session_path,
+        indirect_var=tools.get("indirect_var", ""),
     )
     results = out / "results.json"
     env = {**os.environ, **target_env(target), "PROMPTFOO_DISABLE_TELEMETRY": "1"}

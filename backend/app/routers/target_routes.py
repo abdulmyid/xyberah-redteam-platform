@@ -149,10 +149,12 @@ def test_target(body: TargetTestIn, user: User = Depends(require_role(Role.analy
         return _test_browser(target, prompt, user.company_id)
 
     # Provider targets: we can only confirm the API key is present here.
-    if target.type in ("openai", "anthropic"):
+    if target.type in ("openai", "anthropic", "mcp"):
         missing = missing_keys(target)
+        n = len(target.mcp.servers) if target.type == "mcp" and target.mcp else 0
+        base = f" {n} MCP server(s) configured." if target.type == "mcp" else ""
         return {"ok": not missing, "kind": "provider",
-                "message": ("API key is set — the scan will use it."
+                "message": (("API key is set — the scan will use it." + base)
                             if not missing else f"Missing environment variable: {', '.join(missing)}")}
     if target.type == "ollama":
         return {"ok": True, "kind": "provider",

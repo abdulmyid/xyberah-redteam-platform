@@ -102,6 +102,7 @@ class ToolSelection(BaseModel):
     inspect_tasks: list[str] = Field(default_factory=list)
     num_tests: int = 5
     garak_generations: int = 5
+    indirect_var: str = ""  # RAG: the prompt var that carries untrusted retrieved content
     # Custom prompts (own dataset). prompt_set_id references a saved library set;
     # it is resolved into custom_prompts/custom_grading at campaign creation so the
     # run is reproducible even if the library set is later edited.

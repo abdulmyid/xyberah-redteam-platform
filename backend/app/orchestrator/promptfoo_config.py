@@ -17,6 +17,7 @@ def build_config(
     num_tests: int,
     workdir: Path,
     browser_session_path: str = "",
+    indirect_var: str = "",
 ) -> Path:
     s = get_settings()
     provider = promptfoo_provider(target)
@@ -25,10 +26,17 @@ def build_config(
     if target.type == "browser" and browser_session_path:
         provider.setdefault("config", {})["storageStatePath"] = browser_session_path
 
+    def _plugin_entry(pid: str) -> dict[str, Any]:
+        # indirect-prompt-injection (RAG) needs the variable that carries the
+        # untrusted retrieved content, so the attack is placed there.
+        if pid == "indirect-prompt-injection" and indirect_var:
+            return {"id": pid, "config": {"indirectInjectionVar": indirect_var}}
+        return {"id": pid}
+
     redteam: dict[str, Any] = {
         "purpose": purpose or f"Target under test: {target.display}",
         "numTests": num_tests,
-        "plugins": [{"id": p} for p in plugins] or [{"id": "harmful"}],
+        "plugins": [_plugin_entry(p) for p in plugins] or [{"id": "harmful"}],
         "strategies": strategies or ["basic"],
     }
     config = {

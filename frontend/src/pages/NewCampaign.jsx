@@ -13,6 +13,7 @@ const TARGET_TYPES = [
   { id: "huggingface", label: "Hugging Face" },
   { id: "http", label: "Custom HTTP endpoint" },
   { id: "browser", label: "Web chat UI (browser)" },
+  { id: "mcp", label: "MCP / tool-calling agent" },
 ];
 
 // --- Parse a pasted `curl` command into method/url/headers/body -------------
@@ -138,6 +139,7 @@ export default function NewCampaign() {
     streaming_indicator_selector: "button[aria-label='Stop generating']",
     new_chat_selector: "", setup_steps: [], session_id: null,
   });
+  const [mcp, setMcp] = useState({ base_provider: "openai", servers: [{ url: "", headers: "" }] });
   const [needsLogin, setNeedsLogin] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [sessMsg, setSessMsg] = useState("");
@@ -165,6 +167,17 @@ export default function NewCampaign() {
     const t = { ...target };
     if (target.type === "demo") return { type: "demo" };
     if (target.type === "browser") return { type: "browser", browser: { ...browser } };
+    if (target.type === "mcp") {
+      return {
+        type: "mcp", model: target.model, base_url: target.base_url || "", system_prompt: target.system_prompt,
+        mcp: {
+          base_provider: mcp.base_provider,
+          servers: mcp.servers.filter((sv) => sv.url.trim()).map((sv) => ({
+            url: sv.url.trim(), headers: sv.headers ? JSON.parse(sv.headers) : {},
+          })),
+        },
+      };
+    }
     if (target.type === "http") {
       t.http = {
         url: http.url, method: http.method,
@@ -213,6 +226,7 @@ export default function NewCampaign() {
     promptfoo_plugins: [], promptfoo_strategies: ["basic"], garak_probes: [],
     pyrit_attacks: ["red_teaming"], pyrit_objectives: [], pyrit_max_turns: 5,
     inspect_tasks: [], num_tests: 5, garak_generations: 5, prompt_set_id: null,
+    indirect_var: "context",
   });
 
   useEffect(() => { api.get("/api/catalog").then(setCatalog); }, []);
@@ -452,6 +466,49 @@ export default function NewCampaign() {
               </div>
             )}
           </div>
+        ) : target.type === "mcp" ? (
+          <div className="grid sm:grid-cols-2 gap-4">
+            <p className="sm:col-span-2 text-xs text-slate-500">
+              Test an LLM agent wired to MCP tools. The base model calls the MCP server(s) below; red-team
+              plugins (excessive agency, tool misuse, injection via tool results) probe how it uses them.
+              Use the <b>Agentic &amp; RAG</b> template in Tools.
+            </p>
+            <div><label className="label">Base model provider</label>
+              <select className="input" value={mcp.base_provider} onChange={(e) => setMcp({ ...mcp, base_provider: e.target.value })}>
+                {["openai", "anthropic", "google", "azure", "ollama", "bedrock"].map((p) => <option key={p} value={p}>{p}</option>)}
+              </select></div>
+            <div><label className="label">Model</label>
+              <input className="input" value={target.model} placeholder="gpt-4.1-mini"
+                     onChange={(e) => setTarget({ ...target, model: e.target.value })} required /></div>
+            <div className="sm:col-span-2">
+              <label className="label">MCP servers (HTTP/SSE)</label>
+              {mcp.servers.map((sv, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 mb-2">
+                  <input className="input flex-1 min-w-[220px] font-mono text-xs" placeholder="https://mcp.example.com/sse"
+                         value={sv.url} onChange={(e) => setMcp({ ...mcp, servers: mcp.servers.map((s, j) => j === i ? { ...s, url: e.target.value } : s) })} />
+                  <input className="input flex-1 min-w-[180px] font-mono text-xs" placeholder='Headers JSON (optional) {"Authorization":"Bearer ..."}'
+                         value={sv.headers} onChange={(e) => setMcp({ ...mcp, servers: mcp.servers.map((s, j) => j === i ? { ...s, headers: e.target.value } : s) })} />
+                  {mcp.servers.length > 1 && <button type="button" className="text-red-500 text-xs"
+                    onClick={() => setMcp({ ...mcp, servers: mcp.servers.filter((_, j) => j !== i) })}>remove</button>}
+                </div>
+              ))}
+              <button type="button" className="btn-ghost py-1 text-xs"
+                onClick={() => setMcp({ ...mcp, servers: [...mcp.servers, { url: "", headers: "" }] })}>+ Add server</button>
+            </div>
+            <div className="sm:col-span-2"><label className="label">System prompt (optional)</label>
+              <textarea className="input" rows={2} value={target.system_prompt}
+                        onChange={(e) => setTarget({ ...target, system_prompt: e.target.value })} /></div>
+            <div className="sm:col-span-2 flex items-center gap-3">
+              <button type="button" className="btn-ghost" onClick={testConnection} disabled={testing || !target.model}>
+                {testing ? "Testing…" : "Test connection"}
+              </button>
+              {testResult && (
+                <span className={`text-sm ${testResult.ok ? "text-green-700" : "text-red-700"}`}>
+                  {testResult.ok ? "✓ " : "✗ "}{testResult.message || testResult.error}
+                </span>
+              )}
+            </div>
+          </div>
         ) : target.type !== "http" ? (
           <div className="grid sm:grid-cols-2 gap-4">
             <div><label className="label">Model</label>
@@ -575,6 +632,17 @@ export default function NewCampaign() {
             <div className="text-xs text-slate-500 mb-1">Strategies</div>
             <CheckGroup options={catalog.promptfoo.strategies} selected={tools.promptfoo_strategies}
               onChange={(v) => up({ promptfoo_strategies: v })} />
+            {tools.promptfoo_plugins.includes("indirect-prompt-injection") && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 mt-2">
+                <label className="label">RAG injection variable</label>
+                <input className="input w-48 font-mono text-xs" value={tools.indirect_var}
+                       onChange={(e) => up({ indirect_var: e.target.value })} placeholder="context" />
+                <p className="text-xs text-amber-700 mt-1">
+                  Name of the field that carries untrusted retrieved content. For an HTTP target, include
+                  <code className="mx-1">{"{{" + (tools.indirect_var || "context") + "}}"}</code>in the request body where documents are inserted.
+                </p>
+              </div>
+            )}
           </div>
         )}
         {tools.garak && (
