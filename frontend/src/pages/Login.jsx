@@ -14,10 +14,14 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(null);
   const [setupForm, setSetupForm] = useState({ email: "", username: "", password: "", confirm: "" });
+  const [sso, setSso] = useState({ oidc: false, saml: false });
   const b = branding || {};
 
   useEffect(() => {
     api.get("/api/auth/setup-status").then((r) => setNeedsSetup(r.needs_setup)).catch(() => setNeedsSetup(false));
+    api.get("/api/auth/sso/providers").then(setSso).catch(() => {});
+    const p = new URLSearchParams(window.location.search).get("sso_error");
+    if (p) setErr(p);
   }, []);
 
   async function submitSetup(e) {
@@ -120,6 +124,19 @@ export default function Login() {
                      onChange={(e) => setPassword(e.target.value)} required />
             </div>
             <button className="btn-primary w-full" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+            {(sso.oidc || sso.saml) && (
+              <div className="pt-2">
+                <div className="flex items-center gap-2 my-2 text-xs text-slate-400">
+                  <span className="flex-1 h-px bg-slate-200" />or<span className="flex-1 h-px bg-slate-200" />
+                </div>
+                {sso.oidc && (
+                  <a className="btn-ghost w-full block text-center mb-2" href="/api/auth/oidc/login">Sign in with SSO (OIDC)</a>
+                )}
+                {sso.saml && (
+                  <a className="btn-ghost w-full block text-center" href="/api/auth/saml/login">Sign in with SSO (SAML)</a>
+                )}
+              </div>
+            )}
           </form>
         ) : (
           <form onSubmit={submitMfa} className="space-y-4">

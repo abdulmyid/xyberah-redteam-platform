@@ -51,6 +51,11 @@ RUN python -m venv /opt/tools/garak \
 COPY --from=modelaudit-build /opt/tools/modelaudit /opt/tools-seed/modelaudit
 
 # ---- backend app ----------------------------------------------------------- #
+# xmlsec/libxml2 for SAML (python3-saml). Placed here (after the tool venvs) so
+# changing it does not bust the expensive venv layers above.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libxmlsec1-dev libxml2-dev libxmlsec1-openssl pkg-config \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/xyberah-app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt

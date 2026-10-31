@@ -58,6 +58,9 @@ class User(SQLModel, table=True):
     totp_secret_enc: str = ""          # Fernet-encrypted base32 seed
     totp_enabled: bool = False
     email_otp_enabled: bool = False
+    # SSO / provisioning
+    auth_provider: str = "local"       # local | oidc | saml | scim
+    external_id: str = ""              # IdP subject / SCIM externalId
 
 
 class Invite(SQLModel, table=True):
@@ -204,6 +207,46 @@ class ApiToken(SQLModel, table=True):
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
     last_used: Optional[datetime] = None
+    revoked: bool = False
+
+
+class SsoConfig(SQLModel, table=True):
+    """Instance-wide SSO configuration (single row, id=1). Secrets encrypted at rest."""
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    oidc_enabled: bool = False
+    oidc_issuer: str = ""                    # base issuer URL (OIDC discovery)
+    oidc_client_id: str = ""
+    oidc_client_secret_enc: str = ""
+    oidc_scopes: str = "openid email profile"
+    saml_enabled: bool = False
+    saml_idp_entity_id: str = ""
+    saml_idp_sso_url: str = ""
+    saml_idp_x509: str = Field(default="", sa_column=Column(Text))  # IdP signing cert (PEM/base64)
+    sp_base_url: str = ""                     # public base URL of this app (for ACS/redirect)
+    default_role: str = "viewer"
+    auto_provision: bool = True              # JIT-create users on first SSO login
+
+
+class SsoDomainMap(SQLModel, table=True):
+    """Maps an email domain to a company (and default role) for JIT provisioning."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    domain: str = Field(index=True)          # lowercase, e.g. "acme.com"
+    company_id: int = Field(foreign_key="company.id", index=True)
+    default_role: str = "viewer"
+
+
+class ScimToken(SQLModel, table=True):
+    """Bearer token for an IdP's SCIM 2.0 client. Provisions users into one company."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token_hash: str = Field(index=True)
+    name: str = ""
+    company_id: int = Field(foreign_key="company.id", index=True)
+    default_role: str = "viewer"
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
     revoked: bool = False
 
 

@@ -11,6 +11,7 @@ import Tools from "./settings/Tools.jsx";
 import Audit from "./settings/Audit.jsx";
 import ApiTokens from "./settings/ApiTokens.jsx";
 import Notifications from "./settings/Notifications.jsx";
+import Sso from "./settings/Sso.jsx";
 
 export default function Settings() {
   const { user } = useApp();
@@ -25,6 +26,7 @@ export default function Settings() {
     { id: "audit", label: "Audit log", show: atLeast(user.role, "company_admin"), el: <Audit /> },
     { id: "tokens", label: "API tokens", show: atLeast(user.role, "analyst"), el: <ApiTokens /> },
     { id: "notify", label: "Alerts & SIEM", show: atLeast(user.role, "company_admin"), el: <Notifications /> },
+    { id: "sso", label: "SSO & SCIM", show: user.role === "global_admin", el: <Sso /> },
   ].filter((t) => t.show);
   const [active, setActive] = useState(tabs[0].id);
 

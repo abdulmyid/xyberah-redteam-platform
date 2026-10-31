@@ -10,8 +10,8 @@ https://:443 {
 
 	encode zstd gzip
 
-	# API, live event stream, uploaded assets, and OpenAPI go to the backend
-	@backend path /api/* /uploads/*
+	# API, live event stream, uploaded assets, OpenAPI, and SCIM go to the backend
+	@backend path /api/* /uploads/* /scim/*
 	handle @backend {
 		reverse_proxy {$BACKEND_UPSTREAM} {
 			flush_interval -1
