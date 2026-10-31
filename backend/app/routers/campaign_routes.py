@@ -26,7 +26,7 @@ from ..orchestrator import runner
 from ..orchestrator.events import bus
 from ..orchestrator.targets import Target, missing_keys
 from ..reports.aggregate import summarize
-from ..schemas import CampaignIn, FindingUpdateIn
+from ..schemas import BulkFindingIn, CampaignIn, FindingUpdateIn
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -189,11 +189,62 @@ def delete_campaign(campaign_id: int, user: User = Depends(require_role(Role.ana
 
 
 @router.get("/{campaign_id}/findings")
-def findings(campaign_id: int, user: User = Depends(current_user),
-             session: Session = Depends(get_session)):
+def findings(campaign_id: int, status: str | None = None, severity: str | None = None,
+             tool: str | None = None, passed: str | None = None, q: str | None = None,
+             sort: str = "severity", offset: int = 0, limit: int = 100,
+             user: User = Depends(current_user), session: Session = Depends(get_session)):
+    """Filtered, sorted, paginated findings. Returns {items, total, offset, limit}."""
+    from sqlalchemy import case, func, or_
     _get_owned(campaign_id, user, session)
-    rows = session.exec(select(Finding).where(Finding.campaign_id == campaign_id)).all()
-    return [f.model_dump() for f in rows]
+    conds = [Finding.campaign_id == campaign_id]
+    if status:
+        conds.append(Finding.status == status)
+    if severity:
+        conds.append(Finding.severity == severity)
+    if tool:
+        conds.append(Finding.tool == tool)
+    if passed in ("true", "false"):
+        conds.append(Finding.passed == (passed == "true"))
+    if q:
+        like = f"%{q}%"
+        conds.append(or_(Finding.prompt.like(like), Finding.plugin.like(like),
+                         Finding.reason.like(like), Finding.output.like(like),
+                         Finding.category.like(like)))
+    total = session.exec(select(func.count()).select_from(Finding).where(*conds)).one()
+    sev_order = case((Finding.severity == "critical", 0), (Finding.severity == "high", 1),
+                     (Finding.severity == "medium", 2), (Finding.severity == "low", 3), else_=9)
+    base = select(Finding).where(*conds)
+    base = base.order_by(Finding.plugin) if sort == "plugin" else base.order_by(sev_order, Finding.score.desc())
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    rows = session.exec(base.offset(offset).limit(limit)).all()
+    return {"items": [f.model_dump() for f in rows], "total": total, "offset": offset, "limit": limit}
+
+
+@router.post("/{campaign_id}/findings/bulk")
+def bulk_update_findings(campaign_id: int, body: BulkFindingIn,
+                         user: User = Depends(require_role(Role.analyst)),
+                         session: Session = Depends(get_session)):
+    _get_owned(campaign_id, user, session)
+    if body.status is not None and body.status not in _FINDING_STATUSES:
+        raise HTTPException(422, "Invalid status")
+    if not body.ids:
+        return {"updated": 0}
+    from ..models import utcnow
+    rows = session.exec(select(Finding).where(Finding.campaign_id == campaign_id,
+                                              Finding.id.in_(body.ids))).all()
+    for f in rows:
+        if body.status is not None:
+            f.status = body.status
+        if body.assignee_id is not None:
+            f.assignee_id = body.assignee_id or None
+        if body.triage_note is not None:
+            f.triage_note = body.triage_note[:8000]
+        f.updated_at = utcnow()
+        f.updated_by = user.id
+        session.add(f)
+    session.commit()
+    return {"updated": len(rows)}
 
 
 _FINDING_STATUSES = {"open", "triaged", "fixed", "accepted_risk", "false_positive"}

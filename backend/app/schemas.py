@@ -135,6 +135,13 @@ class FindingUpdateIn(BaseModel):
     triage_note: Optional[str] = None
 
 
+class BulkFindingIn(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+    status: Optional[str] = None
+    assignee_id: Optional[int] = None
+    triage_note: Optional[str] = None
+
+
 # ---- schedules ------------------------------------------------------------- #
 class Freq(BaseModel):
     kind: str = "daily"           # interval | daily | weekly

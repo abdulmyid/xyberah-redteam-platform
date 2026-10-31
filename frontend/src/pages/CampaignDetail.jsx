@@ -12,14 +12,12 @@ export default function CampaignDetail() {
   const nav = useNavigate();
   const { user } = useApp();
   const [c, setC] = useState(null);
-  const [findings, setFindings] = useState([]);
   const [logs, setLogs] = useState([]);
   const [progress, setProgress] = useState({});
   const logRef = useRef(null);
 
   const reload = useCallback(() => {
     api.get(`/api/campaigns/${id}`).then(setC);
-    api.get(`/api/campaigns/${id}/findings`).then(setFindings);
   }, [id]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -192,7 +190,7 @@ export default function CampaignDetail() {
       )}
 
       {/* Drift / regression comparison */}
-      {!running && findings.length > 0 && <DiffPanel campaignId={id} />}
+      {!running && (s.total || 0) > 0 && <DiffPanel campaignId={id} />}
 
       {/* Reports */}
       <div className="card p-5">
@@ -208,7 +206,7 @@ export default function CampaignDetail() {
             <button className="btn-ghost" onClick={share}>Share link</button>
           </div>
         </div>
-        <FindingsTable findings={findings} campaignId={id} canRun={canRun} reload={reload} />
+        <FindingsTable campaignId={id} canRun={canRun} summary={s} statusKey={c.status} />
       </div>
     </div>
   );
@@ -351,35 +349,115 @@ function FrameworkChart({ frameworks }) {
   );
 }
 
-function FindingsTable({ findings, campaignId, canRun, reload }) {
-  const [tab, setTab] = useState("failed");
-  const rows = findings.filter((f) => (tab === "failed" ? !f.passed : true))
-    .sort((a, b) => ["critical", "high", "medium", "low"].indexOf(a.severity) - ["critical", "high", "medium", "low"].indexOf(b.severity));
+const SEV_LIST = ["critical", "high", "medium", "low"];
+const LIMIT = 50;
+
+function FindingsTable({ campaignId, canRun, summary, statusKey }) {
+  const [filters, setFilters] = useState({ q: "", severity: "", status: "", tool: "", passed: "failed" });
+  const [qInput, setQInput] = useState("");
+  const [page, setPage] = useState(0);
+  const [data, setData] = useState({ items: [], total: 0 });
+  const [sel, setSel] = useState(() => new Set());
+  const [bulkStatus, setBulkStatus] = useState("triaged");
+
+  // debounce the search box into filters.q
+  useEffect(() => {
+    const t = setTimeout(() => { setFilters((f) => ({ ...f, q: qInput })); setPage(0); }, 350);
+    return () => clearTimeout(t);
+  }, [qInput]);
+
+  const load = useCallback(() => {
+    const p = new URLSearchParams();
+    if (filters.q) p.set("q", filters.q);
+    if (filters.severity) p.set("severity", filters.severity);
+    if (filters.status) p.set("status", filters.status);
+    if (filters.tool) p.set("tool", filters.tool);
+    if (filters.passed !== "all") p.set("passed", filters.passed === "failed" ? "false" : "true");
+    p.set("offset", page * LIMIT); p.set("limit", LIMIT);
+    api.get(`/api/campaigns/${campaignId}/findings?${p.toString()}`).then(setData).catch(() => {});
+    setSel(new Set());
+  }, [campaignId, filters, page]);
+  useEffect(() => { load(); }, [load, statusKey]);
+
+  const tools = Object.keys(summary?.by_tool || {});
+  const pages = Math.ceil((data.total || 0) / LIMIT);
+  const set = (patch) => { setFilters((f) => ({ ...f, ...patch })); setPage(0); };
+  const toggleSel = (id) => setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const allOnPage = data.items.length > 0 && data.items.every((f) => sel.has(f.id));
+  const toggleAll = () => setSel(allOnPage ? new Set() : new Set(data.items.map((f) => f.id)));
+
+  async function applyBulk() {
+    if (!sel.size) return;
+    try { await api.post(`/api/campaigns/${campaignId}/findings/bulk`, { ids: [...sel], status: bulkStatus }); load(); }
+    catch (e) { alert(e.message); }
+  }
+
   return (
     <div>
-      <div className="flex gap-2 mb-3">
-        <button className={`tab ${tab === "failed" ? "tab-active" : ""}`} onClick={() => setTab("failed")}>Failures ({findings.filter((f) => !f.passed).length})</button>
-        <button className={`tab ${tab === "all" ? "tab-active" : ""}`} onClick={() => setTab("all")}>All ({findings.length})</button>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <input className="input w-48 py-1 text-sm" placeholder="Search prompt / test / reason…"
+               value={qInput} onChange={(e) => setQInput(e.target.value)} />
+        <select className="input w-auto py-1 text-sm" value={filters.passed} onChange={(e) => set({ passed: e.target.value })}>
+          <option value="failed">Failures</option><option value="all">All</option><option value="passed">Passed</option>
+        </select>
+        <select className="input w-auto py-1 text-sm" value={filters.severity} onChange={(e) => set({ severity: e.target.value })}>
+          <option value="">Any severity</option>{SEV_LIST.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select className="input w-auto py-1 text-sm" value={filters.status} onChange={(e) => set({ status: e.target.value })}>
+          <option value="">Any status</option>{Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        {tools.length > 1 && (
+          <select className="input w-auto py-1 text-sm" value={filters.tool} onChange={(e) => set({ tool: e.target.value })}>
+            <option value="">Any tool</option>{tools.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+        <span className="text-xs text-slate-500 ml-auto">{data.total} finding{data.total === 1 ? "" : "s"}</span>
       </div>
-      {rows.length === 0 ? <p className="text-sm text-slate-500">No findings yet.</p> : (
+
+      {canRun && sel.size > 0 && (
+        <div className="flex items-center gap-2 mb-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2 text-sm">
+          <span>{sel.size} selected</span>
+          <span className="text-slate-400">→ set status</span>
+          <select className="input w-auto py-1" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
+            {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <button className="btn-primary py-1" onClick={applyBulk}>Apply</button>
+          <button className="btn-ghost py-1" onClick={() => setSel(new Set())}>Clear</button>
+        </div>
+      )}
+
+      {data.items.length === 0 ? <p className="text-sm text-slate-500">No findings match.</p> : (
         <div className="overflow-auto">
           <table className="w-full text-xs">
             <thead className="text-slate-500 text-left">
-              <tr><th className="p-2 w-6"></th><th className="p-2">Sev</th><th className="p-2">Tool</th><th className="p-2">Category</th><th className="p-2">Test</th><th className="p-2">Status</th><th className="p-2">Prompt</th></tr>
+              <tr>
+                {canRun && <th className="p-2 w-6"><input type="checkbox" checked={allOnPage} onChange={toggleAll} /></th>}
+                <th className="p-2 w-6"></th><th className="p-2">Sev</th><th className="p-2">Tool</th>
+                <th className="p-2">Category</th><th className="p-2">Test</th><th className="p-2">Status</th><th className="p-2">Prompt</th>
+              </tr>
             </thead>
             <tbody>
-              {rows.slice(0, 200).map((f) => (
-                <FindingRow key={f.id} f={f} campaignId={campaignId} canRun={canRun} reload={reload} />
+              {data.items.map((f) => (
+                <FindingRow key={f.id} f={f} campaignId={campaignId} canRun={canRun} reload={load}
+                            selected={sel.has(f.id)} onSelect={() => toggleSel(f.id)} />
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {pages > 1 && (
+        <div className="flex items-center justify-center gap-3 mt-3 text-sm">
+          <button className="btn-ghost py-1" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>← Prev</button>
+          <span className="text-slate-500">Page {page + 1} of {pages}</span>
+          <button className="btn-ghost py-1" disabled={page >= pages - 1} onClick={() => setPage((p) => p + 1)}>Next →</button>
         </div>
       )}
     </div>
   );
 }
 
-function FindingRow({ f, campaignId, canRun, reload }) {
+function FindingRow({ f, campaignId, canRun, reload, selected, onSelect }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(f.triage_note || "");
@@ -401,6 +479,11 @@ function FindingRow({ f, campaignId, canRun, reload }) {
   return (
     <>
       <tr className="border-t hover:bg-slate-50 cursor-pointer" onClick={() => setOpen((o) => !o)}>
+        {canRun && (
+          <td className="p-2" onClick={(e) => e.stopPropagation()}>
+            <input type="checkbox" checked={!!selected} onChange={onSelect} />
+          </td>
+        )}
         <td className="p-2 text-slate-400">{open ? "▾" : "▸"}</td>
         <td className="p-2"><Severity level={f.severity} /></td>
         <td className="p-2">{f.tool}</td>
@@ -411,7 +494,7 @@ function FindingRow({ f, campaignId, canRun, reload }) {
       </tr>
       {open && (
         <tr className="border-t bg-slate-50">
-          <td></td>
+          <td colSpan={canRun ? 2 : 1}></td>
           <td colSpan={6} className="p-3 space-y-3">
             {f.prompt && (
               <div><div className="text-slate-500 font-semibold mb-1">Prompt</div>
