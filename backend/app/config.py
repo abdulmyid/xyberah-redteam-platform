@@ -23,6 +23,7 @@ class Settings:
         self.inspect_bin = self.tools_dir / "inspect" / "bin" / "inspect"
         self.modelaudit_python = self.tools_dir / "modelaudit" / "bin" / "python"
         self.modelaudit_bin = self.tools_dir / "modelaudit" / "bin" / "modelaudit"
+        self.deepteam_python = self.tools_dir / "deepteam" / "bin" / "python"
 
         self.admin_username = os.getenv("XYBERAH_ADMIN_USERNAME", "admin")
         self.admin_password = os.getenv("XYBERAH_ADMIN_PASSWORD", "")

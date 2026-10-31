@@ -92,6 +92,7 @@ class ToolSelection(BaseModel):
     pyrit: bool = False
     inspect: bool = False
     custom: bool = False
+    deepteam: bool = False
     purpose: str = ""
     promptfoo_plugins: list[str] = Field(default_factory=list)
     promptfoo_strategies: list[str] = Field(default_factory=lambda: ["basic"])
@@ -103,6 +104,9 @@ class ToolSelection(BaseModel):
     num_tests: int = 5
     garak_generations: int = 5
     indirect_var: str = ""  # RAG: the prompt var that carries untrusted retrieved content
+    deepteam_vulnerabilities: list[str] = Field(default_factory=list)
+    deepteam_attacks: list[str] = Field(default_factory=lambda: ["PromptInjection"])
+    deepteam_attacks_per_vuln: int = 2
     # Custom prompts (own dataset). prompt_set_id references a saved library set;
     # it is resolved into custom_prompts/custom_grading at campaign creation so the
     # run is reproducible even if the library set is later edited.

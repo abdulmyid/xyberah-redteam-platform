@@ -255,6 +255,35 @@ FRAMEWORKS = {
 }
 
 
+# --------------------------------------------------------------------------- #
+# DeepTeam engine (confident-ai red-teaming framework). ids are DeepTeam class
+# names; labels are human-readable. All validated as no-arg instantiable.
+def _lbl(name: str) -> str:
+    import re
+    return re.sub(r"(?<!^)(?=[A-Z])", " ", name)
+
+
+_DT_VULNS = [
+    "Bias", "Toxicity", "Misinformation", "Hallucination", "PIILeakage", "PromptLeakage",
+    "IllegalActivity", "GraphicContent", "PersonalSafety", "ChildProtection", "Ethics",
+    "Fairness", "Competition", "IntellectualProperty", "Robustness",
+    "ExcessiveAgency", "BOLA", "BFLA", "RBAC", "DebugAccess", "SSRF", "ShellInjection",
+    "SQLInjection", "UnexpectedCodeExecution", "SystemReconnaissance", "IndirectInstruction",
+    "RecursiveHijacking",
+    "GoalTheft", "AgentIdentityAbuse", "AutonomousAgentDrift", "CrossContextRetrieval",
+    "ExploitToolAgent", "ExternalSystemAbuse", "InsecureInterAgentCommunication",
+    "ToolMetadataPoisoning", "ToolOrchestrationAbuse",
+]
+_DT_ATTACKS = [
+    "PromptInjection", "PromptProbing", "Roleplay", "GrayBox", "InputBypass",
+    "AuthorityEscalation", "PermissionEscalation", "GoalRedirection", "ContextPoisoning",
+    "ContextFlooding", "EmotionalManipulation", "MathProblem", "Leetspeak", "Multilingual",
+]
+
+DEEPTEAM_VULNERABILITIES = [{"id": v, "label": _lbl(v)} for v in _DT_VULNS]
+DEEPTEAM_ATTACKS = [{"id": a, "label": _lbl(a)} for a in _DT_ATTACKS]
+
+
 def _bucket(mapping: dict, plugin_id: str, fallback: str = "Other") -> str:
     pid = plugin_id.lower()
     for bucket, needles in mapping.items():

@@ -100,7 +100,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-xs text-slate-500 truncate">{c.target_display}</div>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {["promptfoo", "custom", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => (
+                  {["promptfoo", "custom", "deepteam", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => (
                     <span key={t} className="chip bg-slate-100 text-slate-600">{t}</span>
                   ))}
                 </div>

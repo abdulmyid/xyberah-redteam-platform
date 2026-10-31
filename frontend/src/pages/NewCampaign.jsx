@@ -227,6 +227,8 @@ export default function NewCampaign() {
     pyrit_attacks: ["red_teaming"], pyrit_objectives: [], pyrit_max_turns: 5,
     inspect_tasks: [], num_tests: 5, garak_generations: 5, prompt_set_id: null,
     indirect_var: "context",
+    deepteam: false, deepteam_vulnerabilities: [], deepteam_attacks: ["PromptInjection"],
+    deepteam_attacks_per_vuln: 2,
   });
 
   useEffect(() => { api.get("/api/catalog").then(setCatalog); }, []);
@@ -285,7 +287,7 @@ export default function NewCampaign() {
     if (tools.custom && !tools.prompt_set_id) {
       return setErr("Select a prompt set for the Custom prompts engine, or turn it off.");
     }
-    if (!tools.promptfoo && !tools.garak && !tools.pyrit && !tools.inspect && !tools.custom) {
+    if (!tools.promptfoo && !tools.garak && !tools.pyrit && !tools.inspect && !tools.custom && !tools.deepteam) {
       return setErr("Enable at least one engine.");
     }
     const payload = { name, description: "", target: t, tools: { ...tools, purpose } };
@@ -607,6 +609,7 @@ export default function NewCampaign() {
           <Toggle on={tools.pyrit} set={(v) => up({ pyrit: v })} label="PyRIT" desc="Microsoft multi-turn attack orchestration" />
           <Toggle on={tools.inspect} set={(v) => up({ inspect: v })} label="Inspect AI" desc="Agentic / tool-use / reasoning safety" />
           <Toggle on={tools.custom} set={(v) => up({ custom: v })} label="Custom prompts" desc="Your own prompts/datasets, graded your way" />
+          <Toggle on={tools.deepteam} set={(v) => up({ deepteam: v })} label="DeepTeam" desc="confident-ai: agentic vulns + attack simulation" />
         </div>
 
         {tools.promptfoo && (
@@ -694,6 +697,26 @@ export default function NewCampaign() {
                 </p>
               </>
             )}
+          </div>
+        )}
+
+        {tools.deepteam && (
+          <div className="border-t pt-4 space-y-3">
+            <div className="font-semibold text-sm">DeepTeam vulnerabilities</div>
+            <p className="text-xs text-amber-600">
+              DeepTeam simulates attacks with an LLM — set <code>XYBERAH_GRADER</code>/<code>OPENAI_API_KEY</code>.
+              Works with HTTP &amp; demo targets.
+            </p>
+            {(catalog.deepteam?.vulnerabilities || []).length > 0 && (
+              <CheckGroup options={catalog.deepteam.vulnerabilities} selected={tools.deepteam_vulnerabilities}
+                onChange={(v) => up({ deepteam_vulnerabilities: v })} />
+            )}
+            <div className="text-xs text-slate-500">Attacks</div>
+            <CheckGroup options={catalog.deepteam?.attacks || []} selected={tools.deepteam_attacks}
+              onChange={(v) => up({ deepteam_attacks: v })} />
+            <div className="w-56"><label className="label">Attacks per vulnerability</label>
+              <input type="number" min="1" max="10" className="input" value={tools.deepteam_attacks_per_vuln}
+                     onChange={(e) => up({ deepteam_attacks_per_vuln: +e.target.value })} /></div>
           </div>
         )}
 

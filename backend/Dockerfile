@@ -50,6 +50,12 @@ RUN python -m venv /opt/tools/garak \
  && mv /opt/tools /opt/tools-seed
 COPY --from=modelaudit-build /opt/tools/modelaudit /opt/tools-seed/modelaudit
 
+# DeepTeam red-teaming engine (confident-ai). sentry-sdk is an undeclared import.
+# Separate layer so it never busts the garak/pyrit/inspect venv cache above.
+RUN python -m venv /opt/tools-seed/deepteam \
+ && /opt/tools-seed/deepteam/bin/pip install --no-cache-dir deepteam sentry-sdk \
+ && /opt/tools-seed/deepteam/bin/pip cache purge 2>/dev/null || true
+
 # ---- backend app ----------------------------------------------------------- #
 # xmlsec/libxml2 for SAML (python3-saml). Placed here (after the tool venvs) so
 # changing it does not bust the expensive venv layers above.

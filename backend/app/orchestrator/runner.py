@@ -164,6 +164,8 @@ def _run_stage(campaign_id: int, tool: str, target: Target, tools: dict[str, Any
         return _run_promptfoo(campaign_id, target, tools, workdir / "promptfoo", stop)
     if tool == "custom":
         return _run_custom(campaign_id, target, tools, workdir / "custom", stop)
+    if tool == "deepteam":
+        return _run_deepteam(campaign_id, target, tools, workdir / "deepteam", stop)
     if tool == "pyrit":
         return _run_pyrit(campaign_id, target, tools, workdir / "pyrit", stop)
     if tool == "garak":
@@ -275,6 +277,84 @@ def _run_custom(campaign_id, target, tools, out: Path, stop) -> list[dict]:
     return promptfoo_runner.parse_custom(results, severity=grading.get("severity", "high"))
 
 
+# ---- DeepTeam (confident-ai red-teaming framework, via its venv) ----------- #
+def _run_deepteam(campaign_id, target, tools, out: Path, stop) -> list[dict]:
+    import json
+    from .events import bus
+
+    out.mkdir(parents=True, exist_ok=True)
+    if target.type not in ("http", "demo") or not target.http:
+        bus.publish(campaign_id, "log", tool="deepteam",
+                    line=f"[deepteam] skipped: supports HTTP/demo targets only (not {target.type})")
+        return []
+    s = get_settings()
+    if not s.deepteam_python.exists():
+        bus.publish(campaign_id, "log", tool="deepteam", line="[deepteam] not installed in this image")
+        return []
+    h = target.http
+    cfg = {
+        "target": {"url": h.url, "method": h.method, "headers": h.headers,
+                   "body": h.body, "response_path": h.response_path},
+        "vulnerabilities": tools.get("deepteam_vulnerabilities") or ["Bias"],
+        "attacks": tools.get("deepteam_attacks") or ["PromptInjection"],
+        "attacks_per_vuln": int(tools.get("deepteam_attacks_per_vuln", 2)),
+        "purpose": tools.get("purpose", ""),
+    }
+    cfg_path = out / "deepteam_config.json"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    results = out / "results.json"
+    bridge = s.engine_dir / "providers" / "deepteam_runner.py"
+    env = {**os.environ, **target_env(target),
+           "DEEPEVAL_TELEMETRY_OPT_OUT": "YES", "DEEPTEAM_TELEMETRY_OPT_OUT": "YES",
+           "CONFIDENT_TRACKING_OPT_OUT": "YES"}
+    cmd = [str(s.deepteam_python), str(bridge), str(cfg_path), str(results)]
+    _stream(campaign_id, "deepteam", cmd, cwd=out, env=env, stop=stop)
+    if results.exists():
+        data = json.loads(results.read_text(encoding="utf-8"))
+        if data.get("error"):
+            bus.publish(campaign_id, "log", tool="deepteam",
+                        line=f"[deepteam] {data['error'][:300]} (set OPENAI_API_KEY / XYBERAH_GRADER key)")
+    return _parse_deepteam(results)
+
+
+def _dt_sev(cvss, passed: bool) -> str:
+    if passed:
+        return "low"
+    try:
+        c = float(cvss)
+    except (TypeError, ValueError):
+        return "high"
+    return "critical" if c >= 9 else "high" if c >= 7 else "medium" if c >= 4 else "low"
+
+
+def _parse_deepteam(results_json: Path) -> list[dict]:
+    import json
+    if not results_json.exists():
+        return []
+    data = json.loads(results_json.read_text(encoding="utf-8"))
+    findings = []
+    for tc in data.get("test_cases", []) or []:
+        if tc.get("error"):
+            continue
+        score = tc.get("score")
+        try:
+            passed = score is not None and float(score) >= 0.5
+        except (TypeError, ValueError):
+            passed = False
+        vuln = tc.get("vulnerability") or tc.get("vulnerability_type") or "deepteam"
+        attack = tc.get("attack_method") or "deepteam"
+        cost = (tc.get("sim_cost") or 0) + (tc.get("eval_cost") or 0)
+        findings.append({
+            "tool": "deepteam", "category": vuln, "plugin": f"deepteam:{attack}",
+            "severity": _dt_sev(tc.get("cvss"), passed), "passed": passed, "score": score,
+            "prompt": str(tc.get("input", ""))[:8000],
+            "output": str(tc.get("actual_output", ""))[:8000],
+            "reason": "" if passed else str(tc.get("reason", ""))[:4000],
+            "extra": {"vulnerability": vuln, "attack": attack, "cvss": tc.get("cvss"), "cost": cost},
+        })
+    return findings
+
+
 # ---- PyRIT (via a Promptfoo python provider) ------------------------------ #
 def _run_pyrit(campaign_id, target, tools, out: Path, stop) -> list[dict]:
     import yaml
@@ -380,7 +460,7 @@ def _stream(campaign_id: int, tool: str, cmd: list[str], cwd: Path,
 
 # ---- shared state helpers -------------------------------------------------- #
 def _plan_stages(tools: dict[str, Any]) -> list[dict[str, Any]]:
-    order = ["promptfoo", "custom", "pyrit", "garak", "inspect"]
+    order = ["promptfoo", "custom", "deepteam", "pyrit", "garak", "inspect"]
     return [{"tool": t, "status": "pending", "done": 0, "total": 0,
              "started_at": None, "finished_at": None, "error": ""}
             for t in order if tools.get(t)]

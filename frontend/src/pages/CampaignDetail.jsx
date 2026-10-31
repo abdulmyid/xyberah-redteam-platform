@@ -89,7 +89,7 @@ export default function CampaignDetail() {
           {c.status === "paused" && <span className="text-xs text-amber-600">Paused between stages — Resume to continue</span>}
         </div>
         <div className="grid sm:grid-cols-4 gap-3">
-          {(c.stages?.length ? c.stages : ["promptfoo", "custom", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => ({ tool: t, status: "pending" }))).map((st, i) => {
+          {(c.stages?.length ? c.stages : ["promptfoo", "custom", "deepteam", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => ({ tool: t, status: "pending" }))).map((st, i) => {
             const p = progress[st.tool];
             return (
               <div key={i} className="rounded-lg border border-slate-200 p-3">

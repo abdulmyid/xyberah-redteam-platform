@@ -12,13 +12,14 @@ from typing import Any
 
 from ..config import get_settings
 
-PYPI_NAME = {"garak": "garak", "pyrit": "pyrit", "inspect": "inspect-ai", "modelaudit": "modelaudit"}
-IMPORT_NAME = {"garak": "garak", "pyrit": "pyrit", "inspect": "inspect_ai", "modelaudit": "modelaudit"}
+PYPI_NAME = {"garak": "garak", "pyrit": "pyrit", "inspect": "inspect-ai", "modelaudit": "modelaudit", "deepteam": "deepteam"}
+IMPORT_NAME = {"garak": "garak", "pyrit": "pyrit", "inspect": "inspect_ai", "modelaudit": "modelaudit", "deepteam": "deepteam"}
 
 
 def _python(tool: str) -> Path:
     s = get_settings()
-    return {"garak": s.garak_python, "pyrit": s.pyrit_python, "inspect": s.inspect_python, "modelaudit": s.modelaudit_python}[tool]
+    return {"garak": s.garak_python, "pyrit": s.pyrit_python, "inspect": s.inspect_python,
+            "modelaudit": s.modelaudit_python, "deepteam": s.deepteam_python}[tool]
 
 
 def _installed_version(tool: str) -> str | None:
@@ -46,7 +47,7 @@ def _latest_version(tool: str) -> str | None:
 
 def list_tool_versions() -> dict[str, Any]:
     result = {}
-    for tool in ("garak", "pyrit", "inspect", "modelaudit"):
+    for tool in ("garak", "pyrit", "inspect", "modelaudit", "deepteam"):
         installed = _installed_version(tool)
         latest = _latest_version(tool)
         result[tool] = {

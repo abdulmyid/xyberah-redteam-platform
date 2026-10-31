@@ -68,6 +68,7 @@ def get_catalog(user: User = Depends(current_user)):
         "garak": {"probes": garak_runner.GARAK_PROBES},
         "pyrit": {"attacks": PYRIT_ATTACKS, "default_objectives": DEFAULT_OBJECTIVES},
         "inspect": {"tasks": INSPECT_TASKS},
+        "deepteam": {"vulnerabilities": catalog.DEEPTEAM_VULNERABILITIES, "attacks": catalog.DEEPTEAM_ATTACKS},
         "categories": catalog.CATEGORIES,
     }
 
