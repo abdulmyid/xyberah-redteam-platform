@@ -1,0 +1,51 @@
+Xyberah Community License (Non-Commercial)
+Copyright (c) 2026 Xyberah (xyberah.com). All rights reserved.
+
+1. Definitions
+   "Software" means Xyberah and all files in this repository, excluding the
+   third-party components listed in NOTICE (which are governed by their own
+   licenses).
+   "Non-Commercial Use" means use for personal learning, research, evaluation,
+   academic, or internal testing purposes that is not intended for or directed
+   toward commercial advantage or monetary compensation.
+   "Commercial Use" means any use that is primarily intended for or directed
+   toward commercial advantage or monetary compensation, including (without
+   limitation) using the Software to provide a paid product or service, using it
+   internally within a for-profit organization beyond evaluation, or offering it
+   (hosted or otherwise) to third parties.
+
+2. Grant for Non-Commercial Use
+   You are granted a worldwide, royalty-free, non-exclusive license to use, copy,
+   modify, and self-host the Software for Non-Commercial Use, provided that you:
+   (a) retain this LICENSE, the NOTICE file, and all copyright notices; and
+   (b) keep visible attribution to "Xyberah (xyberah.com)" in the application
+       and in any derivative or distribution.
+
+3. Commercial Use
+   Commercial Use requires a separate commercial agreement with Xyberah. To use
+   the Software for Commercial Use, you must obtain permission and credit Xyberah
+   by contacting sales@xyberah.com. Attribution to "Xyberah (xyberah.com)" must
+   be retained in all cases.
+
+4. Third-Party Components
+   The Software integrates third-party open-source components, each under its own
+   license (see NOTICE). Nothing in this license alters your rights or obligations
+   under those licenses.
+
+5. No Warranty
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+   OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Responsible Use
+   The Software performs adversarial security testing. You may use it only against
+   systems you own or are explicitly authorized to test, and in compliance with
+   all applicable laws. You are solely responsible for your use.
+
+For commercial licensing, contact: sales@xyberah.com
+
+Note: This is a source-available, non-commercial license and is not an OSI-approved
+open-source license. Seek your own legal advice before relying on these terms.

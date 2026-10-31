@@ -1,0 +1,32 @@
+Xyberah — Third-Party Notices
+=============================
+
+Xyberah integrates the following open-source components. Each is the property of
+its respective authors and is used under its own license. Xyberah does not claim
+ownership of these components; this NOTICE provides attribution.
+
+Scanning engines
+----------------
+- NVIDIA garak — Apache-2.0 — https://github.com/NVIDIA/garak
+- Microsoft PyRIT — MIT — https://github.com/Azure/PyRIT
+- UK AISI Inspect AI — MIT — https://github.com/UKGovernmentBEIS/inspect_ai
+- Promptfoo — MIT — https://github.com/promptfoo/promptfoo
+- ModelAudit — MIT — https://github.com/promptfoo/modelaudit
+
+Imported datasets (fetched on demand from their sources; not redistributed here)
+--------------------------------------------------------------------------------
+- AdvBench (via PyRIT) — https://github.com/llm-attacks/llm-attacks
+- HarmBench — https://github.com/centerforaisafety/HarmBench
+- Do-Not-Answer (LibrAI) — https://huggingface.co/datasets/LibrAI/do-not-answer
+- JailbreakBench (JBB-Behaviors) — https://huggingface.co/datasets/JailbreakBench/JBB-Behaviors
+
+Each dataset is subject to its own license and terms; review them before use.
+
+Core libraries
+--------------
+FastAPI, SQLModel, Pydantic, Uvicorn, Jinja2, WeasyPrint, cryptography, PyJWT,
+bcrypt, pyotp, python3-saml, httpx, React, Vite, Tailwind CSS, Caddy — each under
+its respective open-source license.
+
+The Xyberah application code itself is licensed under the Xyberah Community License
+(see LICENSE). For commercial use, contact sales@xyberah.com.

@@ -167,4 +167,19 @@ See [SETUP.md](SETUP.md) for detailed setup, upgrades, production hardening and 
 
 ---
 
+## License
+
+Xyberah is **free for non-commercial use** (personal, research, evaluation, academic,
+internal testing) under the [Xyberah Community License](LICENSE), provided you keep
+attribution to Xyberah (xyberah.com).
+
+**Commercial use requires permission and credit** — contact **sales@xyberah.com**.
+
+Bundled open-source components (garak, PyRIT, Inspect AI, Promptfoo, ModelAudit and
+others) remain under their own licenses; see [NOTICE](NOTICE).
+
+Use Xyberah only against systems you own or are authorized to test.
+
+---
+
 Built by [xyberah.com](https://xyberah.com).
