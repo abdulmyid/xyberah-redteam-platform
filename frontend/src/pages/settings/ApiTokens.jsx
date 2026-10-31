@@ -25,6 +25,10 @@ export default function ApiTokens() {
       <div>
         <h2 className="font-bold text-lg">API tokens (CI/CD)</h2>
         <p className="text-sm text-slate-500">Bearer tokens for automation and CI quality gates. A token acts as your account within your company.</p>
+        <p className="text-sm mt-1">
+          <a className="underline" href="/api/docs" target="_blank" rel="noreferrer">Open the interactive API docs (Swagger) →</a>
+          <span className="text-slate-400"> · raw schema at <code>/api/openapi.json</code></span>
+        </p>
       </div>
 
       <form onSubmit={create} className="card p-5 space-y-3">

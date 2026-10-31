@@ -19,7 +19,52 @@ from .scheduler import start_scheduler
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("xyberah")
 
-app = FastAPI(title="Xyberah API", version="1.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+API_DESCRIPTION = """
+Xyberah is a self-hosted, multi-tenant AI red-teaming and security-evaluation platform.
+
+**Authentication**
+- **Browser/session**: log in at `/login`; the session is an HttpOnly cookie. State-changing
+  requests must send `X-Requested-With: xyberah` (CSRF).
+- **Automation/CI**: send `Authorization: Bearer <api-token>` (create tokens in Settings →
+  API tokens). The token acts as its creating user, so tenancy and role apply.
+- **SSO**: OIDC and SAML sign-in (Settings → SSO & SCIM); SCIM 2.0 at `/scim/v2` for
+  IdP-driven provisioning (separate SCIM bearer token).
+
+**Tenancy**: every object is scoped by company. Global admins act across companies; everyone
+else is confined to their own.
+
+Interactive docs: this page. Raw schema: `/api/openapi.json`.
+"""
+
+TAGS_METADATA = [
+    {"name": "auth", "description": "Login, first-time setup, 2FA (TOTP + email OTP), current user."},
+    {"name": "campaigns", "description": "Create/run/pause/stop campaigns; findings, triage, retest, drift diff, live event stream."},
+    {"name": "prompts", "description": "Prompts & Datasets library, AI attack-pack generation, and traffic (OTLP/JSONL/CSV) import."},
+    {"name": "schedules", "description": "Recurring campaigns (daily/weekly/interval) with run-now."},
+    {"name": "reports", "description": "HTML/PDF/JSON/CSV reports, CEF (SIEM) export, signed compliance attestation, share links."},
+    {"name": "modelaudit", "description": "Scan model files (pickle/safetensors/…) for malicious code and unsafe deserialization."},
+    {"name": "console", "description": "Interactive single-prompt probing of any target."},
+    {"name": "notify", "description": "Alert channels (Slack/Teams/webhook) fired on scan completion."},
+    {"name": "ci", "description": "CI/CD quality gate and API tokens."},
+    {"name": "governance", "description": "Per-company PII redaction, retention, and cost/token budgets."},
+    {"name": "sso", "description": "OIDC/SAML sign-in and admin config (domain maps, SCIM tokens)."},
+    {"name": "scim", "description": "SCIM 2.0 user provisioning (IdP-driven)."},
+    {"name": "targets", "description": "Target connection test, saved targets, browser sessions."},
+    {"name": "settings", "description": "Company/user/branding/SMTP/scanner settings."},
+    {"name": "tls", "description": "TLS certificate upload/management."},
+    {"name": "audit", "description": "Hash-chained audit log and integrity verification."},
+]
+
+app = FastAPI(
+    title="Xyberah API",
+    version="2.0.0",
+    description=API_DESCRIPTION,
+    openapi_tags=TAGS_METADATA,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    swagger_ui_parameters={"docExpansion": "none", "persistAuthorization": True},
+)
 
 
 @app.on_event("startup")
