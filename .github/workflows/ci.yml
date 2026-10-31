@@ -40,3 +40,44 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  security-scan:
+    name: Security scan & SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Python dependency advisories (reported, non-blocking for now)
+      - name: pip-audit (backend)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt || true
+      # Node dependency advisories
+      - name: npm audit (frontend)
+        continue-on-error: true
+        working-directory: frontend
+        run: npm audit --audit-level=high || true
+      # Software Bill of Materials (CycloneDX) for the whole repo
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cyclonedx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cyclonedx.json
+      # Filesystem vulnerability scan (reports HIGH/CRITICAL; does not fail the build yet)
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+          ignore-unfixed: true
