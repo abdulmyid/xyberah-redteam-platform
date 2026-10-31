@@ -63,6 +63,16 @@ def create_set(body: PromptSetIn, user: User = Depends(require_role(Role.analyst
     return _out(ps, full=True)
 
 
+@router.get("/attack-categories")
+def attack_categories(user: User = Depends(require_role(Role.analyst))):
+    """Attack goals for the AI generator + the model it uses (XYBERAH_GRADER).
+    Registered before /{set_id} so the literal path is not captured as an id."""
+    from ..attackgen import CATEGORIES
+    from ..config import get_settings
+    return {"model": get_settings().grader,
+            "categories": [{"id": k, "desc": v} for k, v in CATEGORIES.items()]}
+
+
 @router.get("/{set_id}")
 def get_set(set_id: int, user: User = Depends(current_user), session: Session = Depends(get_session)):
     return _out(_get_owned(set_id, user, session), full=True)
@@ -96,12 +106,6 @@ class GenerateIn(BaseModel):
     purpose: str = ""
     category: str = "prompt-injection"
     count: int = 10
-
-
-@router.get("/attack-categories")
-def attack_categories(user: User = Depends(require_role(Role.analyst))):
-    from ..attackgen import CATEGORIES
-    return [{"id": k, "desc": v} for k, v in CATEGORIES.items()]
 
 
 @router.post("/generate")
