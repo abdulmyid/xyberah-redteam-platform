@@ -472,6 +472,11 @@ function FindingRow({ f, campaignId, canRun, reload, selected, onSelect }) {
     try { await api.post(`/api/campaigns/${campaignId}/findings/${f.id}/retest`); reload(); }
     catch (e) { alert(e.message); } finally { setBusy(false); }
   };
+  const ticket = async () => {
+    setBusy(true);
+    try { await api.post(`/api/campaigns/${campaignId}/findings/${f.id}/ticket`); reload(); }
+    catch (e) { alert(e.message); } finally { setBusy(false); }
+  };
 
   const statusTone = { fixed: "sev-low", false_positive: "bg-slate-200", accepted_risk: "sev-medium",
     triaged: "bg-slate-100", open: "bg-slate-100" }[f.status || "open"];
@@ -538,6 +543,14 @@ function FindingRow({ f, campaignId, canRun, reload, selected, onSelect }) {
                 <button className="btn-primary py-1" disabled={busy} onClick={(e) => { e.stopPropagation(); retest(); }}>
                   {busy ? "Working…" : "Retest"}
                 </button>
+                {f.ticket_url ? (
+                  <a className="btn-ghost py-1" href={f.ticket_url} target="_blank" rel="noreferrer"
+                     onClick={(e) => e.stopPropagation()}>🎫 {f.ticket_key || "ticket"}</a>
+                ) : (
+                  <button className="btn-ghost py-1" disabled={busy} onClick={(e) => { e.stopPropagation(); ticket(); }}>
+                    Create ticket
+                  </button>
+                )}
               </div>
             )}
           </td>

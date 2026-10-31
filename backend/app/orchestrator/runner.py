@@ -541,4 +541,9 @@ def _finalize(campaign_id: int, stop: threading.Event) -> None:
             maybe_deliver(campaign_id)
         except Exception:
             pass
+        try:
+            from ..ticketing import auto_create
+            auto_create(campaign_id)
+        except Exception:
+            pass
     _threads.pop(campaign_id, None)

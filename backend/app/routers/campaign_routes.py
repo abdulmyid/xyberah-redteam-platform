@@ -303,6 +303,43 @@ def retest_finding(campaign_id: int, finding_id: int,
     return f.model_dump()
 
 
+@router.post("/{campaign_id}/findings/{finding_id}/ticket")
+def create_finding_ticket(campaign_id: int, finding_id: int, config_id: int | None = None,
+                          user: User = Depends(require_role(Role.analyst)),
+                          session: Session = Depends(get_session)):
+    """File an issue-tracker ticket for one finding and link it back."""
+    import json as _json
+    from ..crypto import decrypt
+    from ..models import TicketConfig
+    from ..ticketing import create_ticket
+    c = _get_owned(campaign_id, user, session)
+    f = session.get(Finding, finding_id)
+    if not f or f.campaign_id != campaign_id:
+        raise HTTPException(404, "No such finding")
+    scope = company_scope(user)
+    q = select(TicketConfig).where(TicketConfig.enabled == True)  # noqa: E712
+    if config_id:
+        q = q.where(TicketConfig.id == config_id)
+    if scope is not None:
+        q = q.where(TicketConfig.company_id == scope)
+    cfg = session.exec(q).first()
+    if not cfg:
+        raise HTTPException(400, "No ticket integration is configured (Settings → Ticketing)")
+    conf = _json.loads(decrypt(cfg.config_enc) or "{}")
+    res = create_ticket(cfg.kind, conf, f, c)
+    if not res.get("ok"):
+        raise HTTPException(502, res.get("error", "Ticket creation failed"))
+    from ..models import utcnow
+    f.ticket_url = res.get("url", "")
+    f.ticket_key = res.get("key", "")
+    f.updated_at = utcnow()
+    f.updated_by = user.id
+    session.add(f)
+    session.commit()
+    session.refresh(f)
+    return f.model_dump()
+
+
 def _finding_key(f: Finding) -> str:
     return f"{f.tool}|{f.plugin}|{(f.prompt or '')[:200]}"
 

@@ -134,6 +134,9 @@ class Finding(SQLModel, table=True):
     retested_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     updated_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    # Issue-tracker linkage
+    ticket_url: str = ""
+    ticket_key: str = ""
 
 
 class CompanyBranding(SQLModel, table=True):
@@ -290,6 +293,22 @@ class NotifyChannel(SQLModel, table=True):
     on_complete: bool = True         # notify when any scan finishes
     min_risk: int = 0                # only notify when risk score >= this (0 = always)
     enabled: bool = True
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class TicketConfig(SQLModel, table=True):
+    """Per-company issue-tracker integration (GitHub Issues / Jira). The config holds
+    an API token, so it is encrypted at rest."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    kind: str = "github"               # github | jira
+    config_enc: str = Field(default="", sa_column=Column(Text))  # Fernet JSON
+    enabled: bool = True
+    auto_create: bool = False          # auto-file tickets for failing findings on completion
+    min_severity: str = "high"         # auto-create threshold: critical|high|medium|low
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
 
