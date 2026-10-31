@@ -47,6 +47,24 @@ def test_tenancy_isolation_between_companies():
     assert cid not in ids_b
 
 
+def test_duplicate_campaign_copies_config_and_is_scoped():
+    ca = make_company("Dup A")
+    cb = make_company("Dup B")
+    make_user("analyst@dup-a.test", ca, Role.analyst)
+    make_user("analyst@dup-b.test", cb, Role.analyst)
+    client_a = login("analyst@dup-a.test")
+    client_b = login("analyst@dup-b.test")
+
+    cid = _new_campaign(client_a, "orig").json()["id"]
+    # owner can duplicate → new draft with same target
+    r = client_a.post(f"/api/campaigns/{cid}/duplicate")
+    assert r.status_code == 201, r.text
+    new = r.json()
+    assert new["status"] == "draft" and new["id"] != cid
+    # the other tenant cannot duplicate it
+    assert client_b.post(f"/api/campaigns/{cid}/duplicate").status_code == 404
+
+
 def test_viewer_cannot_create_campaign():
     cc = make_company("Tenant V")
     make_user("viewer@tenant-v.test", cc, Role.viewer)

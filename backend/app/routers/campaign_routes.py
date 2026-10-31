@@ -93,6 +93,34 @@ def get_campaign(campaign_id: int, user: User = Depends(current_user),
     return _out(_get_owned(campaign_id, user, session), session, with_summary=True)
 
 
+@router.post("/{campaign_id}/duplicate", status_code=201)
+def duplicate_campaign(campaign_id: int, saved_target_id: int | None = None,
+                       user: User = Depends(require_role(Role.analyst)),
+                       session: Session = Depends(get_session)):
+    """Clone a campaign's config into a new draft (same tools), keeping the original
+    target or swapping to a saved target. Enables A/B: run identical prompts against
+    a raw model and a guardrail-protected endpoint, then compare with the drift diff."""
+    c = _get_owned(campaign_id, user, session)
+    target = dict(c.target)
+    suffix = "(copy)"
+    if saved_target_id is not None:
+        from ..crypto import decrypt
+        from ..models import SavedTarget
+        import json as _json
+        st = session.get(SavedTarget, saved_target_id)
+        scope = company_scope(user)
+        if not st or (scope is not None and st.company_id != scope):
+            raise HTTPException(404, "No such saved target")
+        target = _json.loads(decrypt(st.config_enc))
+        suffix = f"(vs {st.name})"
+    new = Campaign(company_id=c.company_id, name=f"{c.name} {suffix}", description=c.description,
+                   created_by=user.id, target=target, tools=dict(c.tools), status="draft")
+    session.add(new)
+    session.commit()
+    session.refresh(new)
+    return _out(new, session)
+
+
 @router.post("/{campaign_id}/start")
 def start(campaign_id: int, user: User = Depends(require_role(Role.analyst)),
           session: Session = Depends(get_session)):

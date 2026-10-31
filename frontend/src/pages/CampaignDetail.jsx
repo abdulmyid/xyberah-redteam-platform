@@ -220,16 +220,28 @@ const STATUS_LABELS = {
 };
 
 function DiffPanel({ campaignId }) {
+  const nav = useNavigate();
   const [options, setOptions] = useState([]);
   const [against, setAgainst] = useState("");
   const [diff, setDiff] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [savedTargets, setSavedTargets] = useState([]);
+  const [cloneTarget, setCloneTarget] = useState("");
 
   useEffect(() => {
     api.get("/api/campaigns").then((all) =>
       setOptions(all.filter((x) => String(x.id) !== String(campaignId) && x.status === "completed"))
     ).catch(() => {});
+    api.get("/api/targets/saved").then(setSavedTargets).catch(() => {});
   }, [campaignId]);
+
+  async function clone() {
+    const qs = cloneTarget ? `?saved_target_id=${cloneTarget}` : "";
+    try {
+      const r = await api.post(`/api/campaigns/${campaignId}/duplicate${qs}`);
+      nav(`/campaigns/${r.id}`);
+    } catch (e) { alert(e.message); }
+  }
 
   async function run(otherId) {
     if (!otherId) { setDiff(null); return; }
@@ -255,6 +267,22 @@ function DiffPanel({ campaignId }) {
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Guardrail A/B: clone this exact config against another target */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 mb-3 text-sm">
+        <div className="font-medium">Guardrail A/B test</div>
+        <p className="text-xs text-slate-500 mt-0.5 mb-2">
+          Re-run these exact prompts against another target — e.g. your guardrail-protected endpoint —
+          then compare here to measure the guardrail's effect. Save the guarded endpoint as a target first.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input w-auto py-1 text-sm" value={cloneTarget} onChange={(e) => setCloneTarget(e.target.value)}>
+            <option value="">Same target (re-run / drift)</option>
+            {savedTargets.map((s) => <option key={s.id} value={s.id}>vs {s.name} ({s.type})</option>)}
+          </select>
+          <button type="button" className="btn-ghost py-1 text-sm" onClick={clone}>Clone for A/B →</button>
+        </div>
       </div>
       {busy && <p className="text-sm text-slate-500">Comparing…</p>}
       {diff?.error && <p className="text-sm text-red-600">{diff.error}</p>}
