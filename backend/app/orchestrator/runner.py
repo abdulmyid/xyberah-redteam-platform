@@ -181,30 +181,21 @@ def _run_promptfoo(campaign_id, target, tools, out: Path, stop) -> list[dict]:
     return promptfoo_runner.parse_results(results, tool="promptfoo")
 
 
-def retest_single(campaign_id: int, prompt: str) -> dict[str, Any]:
-    """Re-run one finding's prompt against the campaign target and report the new
-    output and (when the campaign had custom grading) whether it now passes.
-    Runs synchronously; used by the finding 'retest' action."""
+def run_single(target: Target, prompt: str, company_id: Optional[int] = None,
+               grading: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Send one prompt to a target via a Promptfoo eval and return the output.
+    When grading is given, also report pass/fail. Used by retest and the console."""
     import tempfile
 
-    with Session(engine) as s:
-        c = s.get(Campaign, campaign_id)
-        if not c:
-            return {"ok": False, "error": "campaign gone"}
-        target = Target(**c.target)
-        tools = c.tools or {}
-        company_id = c.company_id
-
-    grading = tools.get("custom_grading") or {}
+    grading = grading or {}
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp)
         session_path = ""
         if target.type == "browser" and target.browser and target.browser.session_id:
             from . import browser_session
             session_path = browser_session.materialize(target.browser.session_id, company_id, out) or ""
-        # Grade only when we have explicit custom grading; otherwise just capture output.
         cfg = promptfoo_config.build_custom_eval_config(
-            campaign_name=f"retest-{campaign_id}", target=target, prompts=[prompt],
+            campaign_name="single", target=target, prompts=[prompt],
             grading=grading, workdir=out, browser_session_path=session_path,
             grade=bool(grading),
         )
@@ -216,9 +207,21 @@ def retest_single(campaign_id: int, prompt: str) -> dict[str, Any]:
         if not rows:
             return {"ok": False, "error": (proc.stderr or proc.stdout or "no result")[-600:]}
         row = rows[0]
-        graded = bool(grading)
         return {"ok": True, "output": row["output"],
-                "passed": row["passed"] if graded else None, "graded": graded}
+                "passed": row["passed"] if grading else None, "graded": bool(grading)}
+
+
+def retest_single(campaign_id: int, prompt: str) -> dict[str, Any]:
+    """Re-run one finding's prompt against the campaign target (graded when the
+    campaign had custom grading). Used by the finding 'retest' action."""
+    with Session(engine) as s:
+        c = s.get(Campaign, campaign_id)
+        if not c:
+            return {"ok": False, "error": "campaign gone"}
+        target = Target(**c.target)
+        grading = (c.tools or {}).get("custom_grading") or {}
+        company_id = c.company_id
+    return run_single(target, prompt, company_id=company_id, grading=grading)
 
 
 # ---- Custom prompts (the user's own dataset, via Promptfoo eval) ----------- #
@@ -422,4 +425,10 @@ def _finalize(campaign_id: int, stop: threading.Event) -> None:
         s.commit()
         status = c.status
     bus.publish(campaign_id, "status", status=status, final=True)
+    if status in ("completed", "stopped"):
+        try:
+            from ..notify import notify_campaign
+            notify_campaign(campaign_id)
+        except Exception:
+            pass
     _threads.pop(campaign_id, None)

@@ -85,6 +85,21 @@ export default function Prompts() {
 
   const g = (patch) => setDraft((d) => ({ ...d, grading: { ...d.grading, ...patch } }));
 
+  // AI attack-pack generation
+  const [cats, setCats] = useState([]);
+  const [gen, setGen] = useState({ purpose: "", category: "prompt-injection", count: 10, busy: false });
+  useEffect(() => { api.get("/api/prompts/attack-categories").then(setCats).catch(() => {}); }, []);
+  async function generate() {
+    setGen((x) => ({ ...x, busy: true })); setMsg("Generating prompts with the grader model…");
+    try {
+      const r = await api.post("/api/prompts/generate", { purpose: gen.purpose, category: gen.category, count: gen.count });
+      if (!r.ok) { setMsg(r.error || "Generation failed"); return; }
+      setDraft((d) => ({ ...d, prompts: (d.prompts ? d.prompts + "\n" : "") + r.prompts.join("\n") }));
+      setMsg(`Added ${r.prompts.length} AI-generated prompts.`);
+    } catch (e) { setMsg(e.message); }
+    finally { setGen((x) => ({ ...x, busy: false })); }
+  }
+
   // ---- editor view ---------------------------------------------------------
   if (draft) {
     const promptCount = linesToList(draft.prompts).length;
@@ -119,6 +134,26 @@ export default function Prompts() {
               CSV: a <code>prompt</code> column (or the first column). JSON: an array of strings or objects
               with a <code>prompt</code>/<code>text</code>/<code>input</code> field.
             </p>
+          </div>
+
+          <div className="border-t pt-3 space-y-2">
+            <div className="font-semibold text-sm">✨ Generate with AI</div>
+            <p className="text-xs text-slate-500">Auto-author domain-specific adversarial prompts for a goal. Uses the configured grader model.</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2"><label className="label">App purpose / domain</label>
+                <input className="input" value={gen.purpose} onChange={(e) => setGen({ ...gen, purpose: e.target.value })}
+                       placeholder="e.g. Customer-support assistant for an online pharmacy" /></div>
+              <div><label className="label">Attack goal</label>
+                <select className="input" value={gen.category} onChange={(e) => setGen({ ...gen, category: e.target.value })}>
+                  {cats.map((c) => <option key={c.id} value={c.id} title={c.desc}>{c.id}</option>)}
+                </select></div>
+              <div><label className="label">How many</label>
+                <input type="number" min="1" max="50" className="input" value={gen.count}
+                       onChange={(e) => setGen({ ...gen, count: +e.target.value })} /></div>
+            </div>
+            <button type="button" className="btn-ghost" disabled={gen.busy} onClick={generate}>
+              {gen.busy ? "Generating…" : "Generate prompts"}
+            </button>
           </div>
         </section>
 

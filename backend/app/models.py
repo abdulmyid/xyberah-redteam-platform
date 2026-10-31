@@ -229,6 +229,22 @@ class PromptSet(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class NotifyChannel(SQLModel, table=True):
+    """A destination for scan alerts (Slack / Teams / generic webhook). The URL may
+    contain a secret token, so it is encrypted at rest. Company-scoped."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    kind: str = "webhook"            # slack | teams | webhook
+    url_enc: str = Field(default="", sa_column=Column(Text))  # Fernet-encrypted URL
+    on_complete: bool = True         # notify when any scan finishes
+    min_risk: int = 0                # only notify when risk score >= this (0 = always)
+    enabled: bool = True
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class Schedule(SQLModel, table=True):
     """A recurring campaign. The scheduler creates and starts a new Campaign from
     `template` (same shape as the create-campaign body: name/target/tools) each time

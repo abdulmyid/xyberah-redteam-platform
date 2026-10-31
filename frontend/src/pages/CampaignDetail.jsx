@@ -203,6 +203,8 @@ export default function CampaignDetail() {
             <a className="btn-ghost" href={`/api/campaigns/${id}/report.pdf`}>PDF</a>
             <a className="btn-ghost" href={`/api/campaigns/${id}/report.json`}>JSON</a>
             <a className="btn-ghost" href={`/api/campaigns/${id}/report.csv`}>CSV</a>
+            <a className="btn-ghost" href={`/api/campaigns/${id}/findings.cef`} title="ArcSight CEF for SIEM/syslog">CEF</a>
+            <a className="btn-ghost" href={`/api/campaigns/${id}/attestation.pdf`} title="Signed compliance attestation">Attestation</a>
             <button className="btn-ghost" onClick={share}>Share link</button>
           </div>
         </div>

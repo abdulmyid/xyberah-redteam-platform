@@ -57,6 +57,36 @@ def render_html(campaign: Any, findings: list[dict], tools_used: list[str], targ
     )
 
 
+def render_attestation(campaign: Any, findings: list[dict], target_display: str,
+                       assessor: str = "", audit_head: str = "") -> str:
+    """Auditor-facing, signed compliance attestation (one page of evidence per
+    framework). The signature ties the content to this instance and audit trail."""
+    from .. import sign as signing
+    branding = load_branding(getattr(campaign, "company_id", None))
+    s = summarize(findings)
+    frameworks = {fw: sorted(buckets.items()) for fw, buckets in (s.get("by_framework") or {}).items() if buckets}
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    # Canonical content covered by the signature
+    signed_obj = {
+        "campaign_id": campaign.id, "name": campaign.name, "target": target_display,
+        "finished_at": campaign.finished_at.isoformat() if campaign.finished_at else None,
+        "risk_score": s["risk_score"], "total": s["total"], "failed": s["failed"],
+        "pass_rate": s["pass_rate"], "by_severity": s["by_severity"],
+        "by_framework": {fw: {k: v for k, v in b} for fw, b in frameworks.items()},
+        "audit_head": audit_head, "assessor": assessor,
+    }
+    digest = signing.content_hash(signed_obj)
+    signature = signing.sign(digest)
+    return _env.get_template("attestation.html.j2").render(
+        b=branding, campaign=campaign, s=s, frameworks=frameworks,
+        target_display=target_display, assessor=assessor, generated=generated,
+        logo_data=_logo_data_uri(branding),
+        started=campaign.started_at.strftime("%Y-%m-%d %H:%M UTC") if campaign.started_at else "—",
+        finished=campaign.finished_at.strftime("%Y-%m-%d %H:%M UTC") if campaign.finished_at else "—",
+        digest=digest, signature=signature, audit_head=audit_head or "—",
+    )
+
+
 def render_pdf(html: str) -> bytes:
     from weasyprint import HTML  # imported lazily: heavy, PDF only
 

@@ -5,6 +5,7 @@ import io
 import json
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..auth import company_scope, current_user, require_role
@@ -89,6 +90,24 @@ def delete_set(set_id: int, user: User = Depends(require_role(Role.analyst)),
     session.delete(ps)
     session.commit()
     return {"ok": True}
+
+
+class GenerateIn(BaseModel):
+    purpose: str = ""
+    category: str = "prompt-injection"
+    count: int = 10
+
+
+@router.get("/attack-categories")
+def attack_categories(user: User = Depends(require_role(Role.analyst))):
+    from ..attackgen import CATEGORIES
+    return [{"id": k, "desc": v} for k, v in CATEGORIES.items()]
+
+
+@router.post("/generate")
+def generate_prompts(body: GenerateIn, user: User = Depends(require_role(Role.analyst))):
+    from ..attackgen import generate
+    return generate(body.purpose, body.category, body.count)
 
 
 @router.post("/parse-upload")

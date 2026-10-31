@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>{{ b.app_name }} — Attestation — {{ campaign.name }}</title>
+<style>
+  :root {
+    --primary: {{ b.primary }}; --fg: #0f172a; --muted: #64748b; --bg: #fff;
+    --card: #f8fafc; --line: #e2e8f0; --ok: #16a34a; --danger: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body { font: 13px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--fg); margin: 0; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 30px 60px; }
+  header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid var(--primary); padding-bottom: 14px; }
+  header img { height: 38px; }
+  header .name { font-size: 19px; font-weight: 800; }
+  header .tag { color: var(--muted); font-size: 12px; }
+  .doctype { margin-left: auto; text-align: right; font-size: 12px; color: var(--muted); }
+  h1 { font-size: 22px; margin: 22px 0 2px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .meta { color: var(--muted); font-size: 12.5px; }
+  .kv { display: grid; grid-template-columns: 170px 1fr; gap: 4px 12px; margin: 14px 0; font-size: 12.5px; }
+  .kv div.k { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+  .card .k { font-size: 24px; font-weight: 800; } .card .l { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .band { display: inline-block; padding: 3px 10px; border-radius: 999px; color: #fff; font-weight: 700; font-size: 12px; text-transform: uppercase; }
+  .band.critical { background: #b91c1c; } .band.high { background: #ea580c; } .band.medium { background: #d97706; } .band.low { background: var(--ok); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pass { color: var(--ok); font-weight: 700; } .fail { color: var(--danger); font-weight: 700; }
+  .sig { margin-top: 20px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .sig .row { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; word-break: break-all; margin: 3px 0; }
+  .sig .lbl { color: var(--muted); font-family: inherit; }
+  .statement { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 12px 14px; margin: 14px 0; font-size: 12.5px; }
+  footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10.5px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    {% if logo_data %}<img src="{{ logo_data }}" alt="{{ b.app_name }}"/>{% endif %}
+    <div>
+      <div class="name">{{ b.app_name }}</div>
+      <div class="tag">{{ b.tagline or "AI Security Evaluation" }}</div>
+    </div>
+    <div class="doctype">
+      <div><b>COMPLIANCE ATTESTATION</b></div>
+      <div>Generated {{ generated }}</div>
+    </div>
+  </header>
+
+  <h1>AI Red-Team Attestation</h1>
+  <div class="meta">Independent adversarial security evaluation of the system under test.</div>
+
+  <div class="kv">
+    <div class="k">Campaign</div><div>{{ campaign.name }} (#{{ campaign.id }})</div>
+    <div class="k">Target</div><div>{{ target_display }}</div>
+    <div class="k">Assessment window</div><div>{{ started }} &rarr; {{ finished }}</div>
+    <div class="k">Assessor</div><div>{{ assessor or "—" }}</div>
+    <div class="k">Overall risk</div><div><span class="band {{ s.risk_band }}">{{ s.risk_band }} · {{ s.risk_score }}/100</span></div>
+  </div>
+
+  <div class="statement">
+    This attests that the target above was subjected to automated adversarial testing covering the
+    control frameworks below. <b>{{ s.total }}</b> test cases were executed; <b>{{ s.failed }}</b> failed
+    ({{ s.pass_rate }}% pass rate). The results and this document are cryptographically signed by the
+    issuing instance (see verification block) and bound to the tamper-evident audit log.
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="k">{{ s.total }}</div><div class="l">Tests</div></div>
+    <div class="card"><div class="k">{{ s.failed }}</div><div class="l">Failed</div></div>
+    <div class="card"><div class="k">{{ s.pass_rate }}%</div><div class="l">Pass rate</div></div>
+    <div class="card"><div class="k">{{ (s.by_severity.critical or 0) + (s.by_severity.high or 0) }}</div><div class="l">Critical + High</div></div>
+  </div>
+
+  {% for fw, buckets in frameworks.items() %}
+  <h2>{{ fw }}</h2>
+  <table>
+    <thead><tr><th>Control area</th><th class="num">Tested</th><th class="num">Failed</th><th class="num">Result</th></tr></thead>
+    <tbody>
+      {% for name, v in buckets %}
+      <tr>
+        <td>{{ name }}</td>
+        <td class="num">{{ v.total }}</td>
+        <td class="num">{{ v.failed }}</td>
+        <td class="num">{% if v.failed %}<span class="fail">FAIL</span>{% else %}<span class="pass">PASS</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+
+  <h2>Verification</h2>
+  <div class="sig">
+    <div class="row"><span class="lbl">Content SHA-256:</span> {{ digest }}</div>
+    <div class="row"><span class="lbl">HMAC signature:</span> {{ signature }}</div>
+    <div class="row"><span class="lbl">Audit-log chain head:</span> {{ audit_head }}</div>
+    <div class="row lbl" style="margin-top:8px">
+      Verify at {{ b.app_name }} → the signature is an HMAC-SHA256 of the content digest keyed by the
+      issuing instance secret. Any change to the findings, scores or framework results invalidates it.
+    </div>
+  </div>
+
+  <footer>{{ b.footer_text or "" }} · {{ b.app_name }} AI Security Platform · This attestation reflects automated testing at the time of assessment.</footer>
+</div>
+</body>
+</html>

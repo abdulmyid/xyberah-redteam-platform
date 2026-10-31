@@ -34,6 +34,7 @@ export default function Layout({ children }) {
           </Link>
           <nav className="flex items-center gap-1 ml-4">
             {link("/", "Dashboard")}
+            {link("/console", "Console")}
             {link("/prompts", "Prompts")}
             {link("/schedules", "Schedules")}
             {link("/model-audit", "Model Audit")}

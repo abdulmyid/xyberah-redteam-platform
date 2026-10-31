@@ -10,6 +10,7 @@ import Tls from "./settings/Tls.jsx";
 import Tools from "./settings/Tools.jsx";
 import Audit from "./settings/Audit.jsx";
 import ApiTokens from "./settings/ApiTokens.jsx";
+import Notifications from "./settings/Notifications.jsx";
 
 export default function Settings() {
   const { user } = useApp();
@@ -23,6 +24,7 @@ export default function Settings() {
     { id: "tools", label: "Scanners", show: true, el: <Tools /> },
     { id: "audit", label: "Audit log", show: atLeast(user.role, "company_admin"), el: <Audit /> },
     { id: "tokens", label: "API tokens", show: atLeast(user.role, "analyst"), el: <ApiTokens /> },
+    { id: "notify", label: "Alerts & SIEM", show: atLeast(user.role, "company_admin"), el: <Notifications /> },
   ].filter((t) => t.show);
   const [active, setActive] = useState(tabs[0].id);
 

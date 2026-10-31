@@ -50,6 +50,42 @@ def report(campaign_id: int, fmt: str, user: User = Depends(current_user),
     return _render(fmt, c, findings, tools_used, target_display)
 
 
+@router.get("/campaigns/{campaign_id}/attestation.{fmt}")
+def attestation(campaign_id: int, fmt: str, user: User = Depends(current_user),
+                session: Session = Depends(get_session)):
+    """Signed, auditor-facing compliance attestation (html or pdf)."""
+    from ..models import AuditLog
+    c = session.get(Campaign, campaign_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such campaign")
+    assert_same_company(user, c.company_id)
+    findings = [f.model_dump() for f in
+                session.exec(select(Finding).where(Finding.campaign_id == campaign_id)).all()]
+    head = session.exec(select(AuditLog).order_by(AuditLog.id.desc())).first()
+    html = builder.render_attestation(c, findings, Target(**c.target).display,
+                                      assessor=user.email, audit_head=head.row_hash if head else "")
+    if fmt == "html":
+        return HTMLResponse(html)
+    if fmt == "pdf":
+        return Response(builder.render_pdf(html), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{c.name}-attestation.pdf"'})
+    raise HTTPException(400, "format must be html or pdf")
+
+
+@router.get("/campaigns/{campaign_id}/findings.cef")
+def findings_cef(campaign_id: int, user: User = Depends(current_user),
+                 session: Session = Depends(get_session)):
+    """ArcSight CEF export (one line per failed finding) for syslog/Splunk/SIEM."""
+    from ..notify import findings_to_cef
+    c = session.get(Campaign, campaign_id)
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such campaign")
+    assert_same_company(user, c.company_id)
+    rows = session.exec(select(Finding).where(Finding.campaign_id == campaign_id)).all()
+    return Response(findings_to_cef(c, rows), media_type="text/plain",
+                    headers={"Content-Disposition": f'attachment; filename="{c.name}.cef"'})
+
+
 # ---- share links ----------------------------------------------------------- #
 @router.post("/campaigns/{campaign_id}/share", status_code=201)
 def create_share(campaign_id: int, days: int = 7, user: User = Depends(current_user),
