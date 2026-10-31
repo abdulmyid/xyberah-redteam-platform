@@ -42,6 +42,12 @@ class Company(SQLModel, table=True):
     # Per-company resource guard rails
     max_users: int = 25
     max_concurrent_campaigns: int = 1
+    # Data governance
+    redact_findings: bool = False        # scrub PII/secrets from stored finding text
+    retention_days: int = 0              # auto-delete campaigns older than N days (0 = keep)
+    monthly_cost_budget: float = 0.0     # USD; 0 = no budget
+    monthly_token_budget: int = 0        # tokens; 0 = no budget
+    budget_enforce: bool = False         # block new campaigns when a budget is exceeded
 
 
 class User(SQLModel, table=True):

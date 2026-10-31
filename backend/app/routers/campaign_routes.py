@@ -104,6 +104,12 @@ def start(campaign_id: int, user: User = Depends(require_role(Role.analyst)),
     company = session.get(Company, c.company_id)
     if company and len(running) >= company.max_concurrent_campaigns:
         raise HTTPException(429, "Company concurrent campaign limit reached")
+    if company and company.budget_enforce:
+        from ..governance import budget_status
+        bs = budget_status(session, company)
+        if bs["over_budget"]:
+            raise HTTPException(429, "Monthly budget exceeded for this company; "
+                                     "raise the budget or disable enforcement to continue")
     c.status = "queued"
     c.stages = []
     c.error = ""

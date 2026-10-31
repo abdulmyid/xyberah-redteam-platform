@@ -14,6 +14,8 @@ from .models import Campaign, PromptSet, Schedule, utcnow
 log = logging.getLogger("xyberah.scheduler")
 _TICK_SECONDS = 60
 _started = False
+_last_retention = 0.0
+_RETENTION_EVERY = 3600  # run the retention sweep at most hourly
 
 
 def next_run(freq: dict[str, Any], after: Optional[datetime] = None) -> datetime:
@@ -57,9 +59,20 @@ def _loop() -> None:
     while True:
         try:
             _tick()
+            _maybe_retention()
         except Exception:
             log.exception("scheduler tick failed")
         time.sleep(_TICK_SECONDS)
+
+
+def _maybe_retention() -> None:
+    global _last_retention
+    if time.time() - _last_retention < _RETENTION_EVERY:
+        return
+    _last_retention = time.time()
+    from .governance import retention_sweep
+    with Session(engine) as s:
+        retention_sweep(s)
 
 
 def _tick() -> None:

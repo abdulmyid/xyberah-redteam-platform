@@ -71,6 +71,10 @@ def notify_campaign(campaign_id: int, base_url: str = "") -> None:
                     row = s.get(Setting, "public_base_url")
                     base = (row.value if row and isinstance(row.value, str) else "") or ""
                 base = base.rstrip("/")
+                from .models import Company
+                from .governance import budget_status
+                company = s.get(Company, c.company_id)
+                budget = budget_status(s, company) if company else {"over_budget": False}
             risk = summary.get("risk_score", 0)
             for ch in channels:
                 if not ch.on_complete or risk < (ch.min_risk or 0):
@@ -79,7 +83,13 @@ def notify_campaign(campaign_id: int, base_url: str = "") -> None:
                 if not url:
                     continue
                 try:
-                    _post(url, _payload(ch.kind, summary, c, base))
+                    payload = _payload(ch.kind, summary, c, base)
+                    if budget.get("over_budget"):
+                        if ch.kind in ("slack", "teams"):
+                            payload["text"] += "\n:warning: Monthly budget exceeded for this company."
+                        else:
+                            payload["budget_exceeded"] = True
+                    _post(url, payload)
                 except Exception as exc:
                     log.warning("notify channel %s failed: %s", ch.id, exc)
         except Exception:

@@ -397,9 +397,14 @@ def _check_pause(campaign_id: int) -> bool:
 def _save_findings(campaign_id: int, findings: list[dict[str, Any]]) -> None:
     if not findings:
         return
+    from ..models import Company
     with Session(engine) as s:
         campaign = s.get(Campaign, campaign_id)
         company_id = campaign.company_id if campaign else None
+        company = s.get(Company, company_id) if company_id is not None else None
+        if company and company.redact_findings:
+            from ..redact import scrub_finding
+            findings = [scrub_finding(dict(f)) for f in findings]
         for f in findings:
             s.add(Finding(campaign_id=campaign_id, company_id=company_id, **f))
         s.commit()
