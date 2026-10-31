@@ -258,6 +258,9 @@ export default function NewCampaign() {
     catch (e) { alert(e.message); }
   }
   const up = (patch) => setTools((t) => ({ ...t, ...patch }));
+  const [schedule, setSchedule] = useState({ enabled: false, freq: { kind: "daily", at: "02:00", minutes: 1440, day: 0 } });
+  const sfreq = (patch) => setSchedule((s) => ({ ...s, freq: { ...s.freq, ...patch } }));
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   async function submit(e) {
     e.preventDefault();
@@ -271,11 +274,15 @@ export default function NewCampaign() {
     if (!tools.promptfoo && !tools.garak && !tools.pyrit && !tools.inspect && !tools.custom) {
       return setErr("Enable at least one engine.");
     }
+    const payload = { name, description: "", target: t, tools: { ...tools, purpose } };
     try {
-      const r = await api.post("/api/campaigns", {
-        name, description: "", target: t, tools: { ...tools, purpose },
-      });
-      nav(`/campaigns/${r.id}`);
+      if (schedule.enabled) {
+        await api.post("/api/schedules", { name, template: payload, freq: schedule.freq, enabled: true });
+        nav("/schedules");
+      } else {
+        const r = await api.post("/api/campaigns", payload);
+        nav(`/campaigns/${r.id}`);
+      }
     } catch (e) { setErr(e.message); }
   }
 
@@ -632,8 +639,42 @@ export default function NewCampaign() {
         </div>
       </section>
 
+      <section className="card p-5 space-y-3">
+        <Toggle on={schedule.enabled} set={(v) => setSchedule({ ...schedule, enabled: v })}
+          label="Run on a schedule" desc="Re-run this scan automatically to catch model drift and regressions" />
+        {schedule.enabled && (
+          <div className="flex flex-wrap items-end gap-3 border-t pt-3">
+            <div><label className="label">Frequency</label>
+              <select className="input w-auto" value={schedule.freq.kind} onChange={(e) => sfreq({ kind: e.target.value })}>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="interval">Every N hours</option>
+              </select></div>
+            {schedule.freq.kind === "interval" ? (
+              <div><label className="label">Hours between runs</label>
+                <input type="number" min="1" className="input w-28"
+                       value={Math.round((schedule.freq.minutes || 1440) / 60)}
+                       onChange={(e) => sfreq({ minutes: Math.max(1, +e.target.value) * 60 })} /></div>
+            ) : (
+              <>
+                {schedule.freq.kind === "weekly" && (
+                  <div><label className="label">Day</label>
+                    <select className="input w-auto" value={schedule.freq.day} onChange={(e) => sfreq({ day: +e.target.value })}>
+                      {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                    </select></div>
+                )}
+                <div><label className="label">Time (UTC)</label>
+                  <input type="time" className="input w-32" value={schedule.freq.at}
+                         onChange={(e) => sfreq({ at: e.target.value })} /></div>
+              </>
+            )}
+            <p className="text-xs text-slate-500 w-full">Manage recurring scans under <a className="underline" href="/schedules">Schedules</a>.</p>
+          </div>
+        )}
+      </section>
+
       <div className="flex gap-3">
-        <button className="btn-primary">Create campaign</button>
+        <button className="btn-primary">{schedule.enabled ? "Create schedule" : "Create campaign"}</button>
         <button type="button" className="btn-ghost" onClick={() => nav("/")}>Cancel</button>
       </div>
     </form>

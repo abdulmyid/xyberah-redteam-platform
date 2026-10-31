@@ -181,6 +181,46 @@ def _run_promptfoo(campaign_id, target, tools, out: Path, stop) -> list[dict]:
     return promptfoo_runner.parse_results(results, tool="promptfoo")
 
 
+def retest_single(campaign_id: int, prompt: str) -> dict[str, Any]:
+    """Re-run one finding's prompt against the campaign target and report the new
+    output and (when the campaign had custom grading) whether it now passes.
+    Runs synchronously; used by the finding 'retest' action."""
+    import tempfile
+
+    with Session(engine) as s:
+        c = s.get(Campaign, campaign_id)
+        if not c:
+            return {"ok": False, "error": "campaign gone"}
+        target = Target(**c.target)
+        tools = c.tools or {}
+        company_id = c.company_id
+
+    grading = tools.get("custom_grading") or {}
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp)
+        session_path = ""
+        if target.type == "browser" and target.browser and target.browser.session_id:
+            from . import browser_session
+            session_path = browser_session.materialize(target.browser.session_id, company_id, out) or ""
+        # Grade only when we have explicit custom grading; otherwise just capture output.
+        cfg = promptfoo_config.build_custom_eval_config(
+            campaign_name=f"retest-{campaign_id}", target=target, prompts=[prompt],
+            grading=grading, workdir=out, browser_session_path=session_path,
+            grade=bool(grading),
+        )
+        results = out / "results.json"
+        env = {**os.environ, **target_env(target), "PROMPTFOO_DISABLE_TELEMETRY": "1"}
+        cmd = [get_settings().engine_bin, "eval", "-c", str(cfg), "-o", str(results), "--no-progress-bar"]
+        proc = subprocess.run(cmd, cwd=str(out), env=env, capture_output=True, text=True, timeout=300)
+        rows = promptfoo_runner.parse_custom(results, severity=grading.get("severity", "high"))
+        if not rows:
+            return {"ok": False, "error": (proc.stderr or proc.stdout or "no result")[-600:]}
+        row = rows[0]
+        graded = bool(grading)
+        return {"ok": True, "output": row["output"],
+                "passed": row["passed"] if graded else None, "graded": graded}
+
+
 # ---- Custom prompts (the user's own dataset, via Promptfoo eval) ----------- #
 def _run_custom(campaign_id, target, tools, out: Path, stop) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)

@@ -26,7 +26,7 @@ from ..orchestrator import runner
 from ..orchestrator.events import bus
 from ..orchestrator.targets import Target, missing_keys
 from ..reports.aggregate import summarize
-from ..schemas import CampaignIn
+from ..schemas import CampaignIn, FindingUpdateIn
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -160,6 +160,98 @@ def findings(campaign_id: int, user: User = Depends(current_user),
     _get_owned(campaign_id, user, session)
     rows = session.exec(select(Finding).where(Finding.campaign_id == campaign_id)).all()
     return [f.model_dump() for f in rows]
+
+
+_FINDING_STATUSES = {"open", "triaged", "fixed", "accepted_risk", "false_positive"}
+
+
+@router.patch("/{campaign_id}/findings/{finding_id}")
+def update_finding(campaign_id: int, finding_id: int, body: FindingUpdateIn,
+                   user: User = Depends(require_role(Role.analyst)),
+                   session: Session = Depends(get_session)):
+    _get_owned(campaign_id, user, session)
+    f = session.get(Finding, finding_id)
+    if not f or f.campaign_id != campaign_id:
+        raise HTTPException(404, "No such finding")
+    if body.status is not None:
+        if body.status not in _FINDING_STATUSES:
+            raise HTTPException(422, "Invalid status")
+        f.status = body.status
+    if body.assignee_id is not None:
+        f.assignee_id = body.assignee_id or None
+    if body.triage_note is not None:
+        f.triage_note = body.triage_note[:8000]
+    from ..models import utcnow
+    f.updated_at = utcnow()
+    f.updated_by = user.id
+    session.add(f)
+    session.commit()
+    session.refresh(f)
+    return f.model_dump()
+
+
+@router.post("/{campaign_id}/findings/{finding_id}/retest")
+def retest_finding(campaign_id: int, finding_id: int,
+                   user: User = Depends(require_role(Role.analyst)),
+                   session: Session = Depends(get_session)):
+    _get_owned(campaign_id, user, session)
+    f = session.get(Finding, finding_id)
+    if not f or f.campaign_id != campaign_id:
+        raise HTTPException(404, "No such finding")
+    if not f.prompt:
+        raise HTTPException(422, "This finding has no prompt to retest")
+    result = runner.retest_single(campaign_id, f.prompt)
+    if not result.get("ok"):
+        raise HTTPException(502, result.get("error", "Retest failed"))
+    from ..models import utcnow
+    f.retest_output = str(result.get("output", ""))[:8000]
+    f.retest_passed = result.get("passed")
+    f.retested_at = utcnow()
+    # If it was graded and now passes, nudge status toward fixed (user can override)
+    if result.get("graded") and result.get("passed") and f.status in ("open", "triaged"):
+        f.status = "fixed"
+    f.updated_at = utcnow()
+    f.updated_by = user.id
+    session.add(f)
+    session.commit()
+    session.refresh(f)
+    return f.model_dump()
+
+
+def _finding_key(f: Finding) -> str:
+    return f"{f.tool}|{f.plugin}|{(f.prompt or '')[:200]}"
+
+
+@router.get("/{campaign_id}/diff")
+def diff(campaign_id: int, against: int, user: User = Depends(current_user),
+         session: Session = Depends(get_session)):
+    """Compare this campaign's failing findings with another run (e.g. a previous
+    scan of the same target) to surface regressions and fixes."""
+    cur = _get_owned(campaign_id, user, session)
+    base = _get_owned(against, user, session)
+    cur_f = session.exec(select(Finding).where(Finding.campaign_id == campaign_id)).all()
+    base_f = session.exec(select(Finding).where(Finding.campaign_id == against)).all()
+    cur_fail = {_finding_key(f): f for f in cur_f if not f.passed}
+    base_fail = {_finding_key(f): f for f in base_f if not f.passed}
+
+    def _brief(f: Finding) -> dict:
+        return {"id": f.id, "severity": f.severity, "plugin": f.plugin,
+                "category": f.category, "tool": f.tool, "prompt": (f.prompt or "")[:300]}
+
+    new = [_brief(f) for k, f in cur_fail.items() if k not in base_fail]
+    fixed = [_brief(f) for k, f in base_fail.items() if k not in cur_fail]
+    persisting = [_brief(f) for k, f in cur_fail.items() if k in base_fail]
+    cur_sum = summarize([f.model_dump() for f in cur_f])
+    base_sum = summarize([f.model_dump() for f in base_f])
+    return {
+        "current": {"id": cur.id, "name": cur.name, "finished_at": cur.finished_at,
+                    "risk_score": cur_sum["risk_score"], "failed": cur_sum["failed"]},
+        "baseline": {"id": base.id, "name": base.name, "finished_at": base.finished_at,
+                     "risk_score": base_sum["risk_score"], "failed": base_sum["failed"]},
+        "risk_delta": cur_sum["risk_score"] - base_sum["risk_score"],
+        "new": new, "fixed": fixed, "persisting": persisting,
+        "counts": {"new": len(new), "fixed": len(fixed), "persisting": len(persisting)},
+    }
 
 
 @router.get("/{campaign_id}/events")

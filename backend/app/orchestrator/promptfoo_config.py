@@ -71,9 +71,11 @@ def build_custom_eval_config(
     grading: dict[str, Any],
     workdir: Path,
     browser_session_path: str = "",
+    grade: bool = True,
 ) -> Path:
     """Build a Promptfoo *eval* config that runs the user's own prompts against the
-    target and grades each response with their chosen rubric / keyword rules."""
+    target. When grade=True each response is graded with the chosen rubric / keyword
+    rules; when grade=False the response is only captured (no grader model needed)."""
     s = get_settings()
     provider = promptfoo_provider(target)
     if target.system_prompt:
@@ -81,15 +83,20 @@ def build_custom_eval_config(
     if target.type == "browser" and browser_session_path:
         provider.setdefault("config", {})["storageStatePath"] = browser_session_path
 
-    asserts = _assertions(grading)
-    tests = [{"vars": {"prompt": p}, "assert": asserts} for p in prompts]
-    config = {
+    if grade:
+        asserts = _assertions(grading)
+        tests = [{"vars": {"prompt": p}, "assert": asserts} for p in prompts]
+    else:
+        tests = [{"vars": {"prompt": p}} for p in prompts]
+    config: dict[str, Any] = {
         "description": f"Xyberah custom prompts: {campaign_name}",
         "providers": [provider],
         "prompts": ["{{prompt}}"],
-        "defaultTest": {"options": {"provider": s.grader}},
         "tests": tests,
     }
+    # Grader model for llm-rubric assertions; Promptfoo only calls it if one runs.
+    if grade:
+        config["defaultTest"] = {"options": {"provider": s.grader}}
     path = workdir / "promptfooconfig.yaml"
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return path

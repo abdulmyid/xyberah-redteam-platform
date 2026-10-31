@@ -127,6 +127,28 @@ class CampaignIn(BaseModel):
     tools: ToolSelection
 
 
+# ---- finding triage / remediation ----------------------------------------- #
+class FindingUpdateIn(BaseModel):
+    status: Optional[str] = None  # open | triaged | fixed | accepted_risk | false_positive
+    assignee_id: Optional[int] = None
+    triage_note: Optional[str] = None
+
+
+# ---- schedules ------------------------------------------------------------- #
+class Freq(BaseModel):
+    kind: str = "daily"           # interval | daily | weekly
+    minutes: int = 1440           # for kind=interval
+    at: str = "02:00"             # for kind=daily/weekly, UTC HH:MM
+    day: int = 0                  # for kind=weekly, 0=Monday
+
+
+class ScheduleIn(BaseModel):
+    name: str
+    template: CampaignIn
+    freq: Freq = Field(default_factory=Freq)
+    enabled: bool = True
+
+
 class BrandingIn(BaseModel):
     app_name: Optional[str] = None
     tagline: Optional[str] = None

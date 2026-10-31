@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api, atLeast } from "../lib/api";
 import { useApp } from "../lib/context.jsx";
 import { Status, RiskGauge } from "../components/ui.jsx";
@@ -59,6 +60,27 @@ export default function Dashboard() {
         </div>
       )}
 
+      {(() => {
+        const trend = campaigns
+          .filter((c) => c.status === "completed" && c.finished_at)
+          .sort((a, b) => new Date(a.finished_at) - new Date(b.finished_at))
+          .map((c) => ({ name: new Date(c.finished_at).toLocaleDateString(), risk: c.summary?.risk_score ?? 0 }));
+        if (trend.length < 2) return null;
+        return (
+          <div className="card p-5 mb-4">
+            <div className="text-sm font-semibold mb-2">Risk score over time</div>
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart data={trend} margin={{ left: -10, right: 10 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="risk" stroke="var(--brand-primary)" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })()}
+
       {loading ? (
         <p className="text-slate-500">Loading…</p>
       ) : campaigns.length === 0 ? (
@@ -78,7 +100,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-xs text-slate-500 truncate">{c.target_display}</div>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {["promptfoo", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => (
+                  {["promptfoo", "custom", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => (
                     <span key={t} className="chip bg-slate-100 text-slate-600">{t}</span>
                   ))}
                 </div>

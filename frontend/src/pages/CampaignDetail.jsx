@@ -91,7 +91,7 @@ export default function CampaignDetail() {
           {c.status === "paused" && <span className="text-xs text-amber-600">Paused between stages — Resume to continue</span>}
         </div>
         <div className="grid sm:grid-cols-4 gap-3">
-          {(c.stages?.length ? c.stages : ["promptfoo", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => ({ tool: t, status: "pending" }))).map((st, i) => {
+          {(c.stages?.length ? c.stages : ["promptfoo", "custom", "garak", "pyrit", "inspect"].filter((t) => c.tools?.[t]).map((t) => ({ tool: t, status: "pending" }))).map((st, i) => {
             const p = progress[st.tool];
             return (
               <div key={i} className="rounded-lg border border-slate-200 p-3">
@@ -191,6 +191,9 @@ export default function CampaignDetail() {
         </div>
       )}
 
+      {/* Drift / regression comparison */}
+      {!running && findings.length > 0 && <DiffPanel campaignId={id} />}
+
       {/* Reports */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-3">
@@ -203,7 +206,93 @@ export default function CampaignDetail() {
             <button className="btn-ghost" onClick={share}>Share link</button>
           </div>
         </div>
-        <FindingsTable findings={findings} />
+        <FindingsTable findings={findings} campaignId={id} canRun={canRun} reload={reload} />
+      </div>
+    </div>
+  );
+}
+
+const STATUS_LABELS = {
+  open: "Open", triaged: "Triaged", fixed: "Fixed",
+  accepted_risk: "Accepted risk", false_positive: "False positive",
+};
+
+function DiffPanel({ campaignId }) {
+  const [options, setOptions] = useState([]);
+  const [against, setAgainst] = useState("");
+  const [diff, setDiff] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get("/api/campaigns").then((all) =>
+      setOptions(all.filter((x) => String(x.id) !== String(campaignId) && x.status === "completed"))
+    ).catch(() => {});
+  }, [campaignId]);
+
+  async function run(otherId) {
+    if (!otherId) { setDiff(null); return; }
+    setBusy(true);
+    try { setDiff(await api.get(`/api/campaigns/${campaignId}/diff?against=${otherId}`)); }
+    catch (e) { setDiff({ error: e.message }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3 gap-3">
+        <div>
+          <h2 className="font-bold">Drift &amp; regression</h2>
+          <p className="text-xs text-slate-500">Compare against a previous run to spot new vulnerabilities and fixes.</p>
+        </div>
+        <select className="input w-auto py-1 text-sm" value={against}
+                onChange={(e) => { setAgainst(e.target.value); run(e.target.value); }}>
+          <option value="">Compare to…</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name} · risk {o.summary?.risk_score ?? "?"}{o.finished_at ? ` · ${new Date(o.finished_at).toLocaleDateString()}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      {busy && <p className="text-sm text-slate-500">Comparing…</p>}
+      {diff?.error && <p className="text-sm text-red-600">{diff.error}</p>}
+      {diff && !diff.error && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-4 gap-3">
+            <Stat label="New" value={diff.counts.new} tone="text-red-600" />
+            <Stat label="Fixed" value={diff.counts.fixed} tone="text-green-600" />
+            <Stat label="Still failing" value={diff.counts.persisting} />
+            <Stat label="Risk Δ" value={`${diff.risk_delta > 0 ? "+" : ""}${diff.risk_delta}`}
+                  tone={diff.risk_delta > 0 ? "text-red-600" : diff.risk_delta < 0 ? "text-green-600" : ""} />
+          </div>
+          <div className="text-xs text-slate-500">
+            Baseline: <b>{diff.baseline.name}</b> (risk {diff.baseline.risk_score}, {diff.baseline.failed} failing)
+            {" → "}current: <b>{diff.current.name}</b> (risk {diff.current.risk_score}, {diff.current.failed} failing)
+          </div>
+          {diff.new.length > 0 && (
+            <DiffList title="New vulnerabilities (regressions)" tone="sev-high" rows={diff.new} />
+          )}
+          {diff.fixed.length > 0 && (
+            <DiffList title="Fixed since baseline" tone="sev-low" rows={diff.fixed} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiffList({ title, tone, rows }) {
+  return (
+    <div>
+      <div className="text-sm font-semibold mb-2">{title} ({rows.length})</div>
+      <div className="space-y-1">
+        {rows.slice(0, 50).map((r) => (
+          <div key={`${r.id}-${r.plugin}`} className="flex items-center gap-2 text-xs">
+            <span className={`chip ${tone}`}>{r.severity}</span>
+            <span className="font-mono">{r.plugin}</span>
+            <span className="text-slate-500 truncate" title={r.prompt}>{r.prompt?.slice(0, 120)}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -232,7 +321,7 @@ function FrameworkChart({ frameworks }) {
   );
 }
 
-function FindingsTable({ findings }) {
+function FindingsTable({ findings, campaignId, canRun, reload }) {
   const [tab, setTab] = useState("failed");
   const rows = findings.filter((f) => (tab === "failed" ? !f.passed : true))
     .sort((a, b) => ["critical", "high", "medium", "low"].indexOf(a.severity) - ["critical", "high", "medium", "low"].indexOf(b.severity));
@@ -246,22 +335,101 @@ function FindingsTable({ findings }) {
         <div className="overflow-auto">
           <table className="w-full text-xs">
             <thead className="text-slate-500 text-left">
-              <tr><th className="p-2">Sev</th><th className="p-2">Tool</th><th className="p-2">Category</th><th className="p-2">Test</th><th className="p-2">Prompt</th></tr>
+              <tr><th className="p-2 w-6"></th><th className="p-2">Sev</th><th className="p-2">Tool</th><th className="p-2">Category</th><th className="p-2">Test</th><th className="p-2">Status</th><th className="p-2">Prompt</th></tr>
             </thead>
             <tbody>
               {rows.slice(0, 200).map((f) => (
-                <tr key={f.id} className="border-t">
-                  <td className="p-2"><Severity level={f.severity} /></td>
-                  <td className="p-2">{f.tool}</td>
-                  <td className="p-2">{f.category}</td>
-                  <td className="p-2 font-mono">{f.plugin}</td>
-                  <td className="p-2 max-w-md truncate" title={f.prompt}>{f.prompt?.slice(0, 160)}</td>
-                </tr>
+                <FindingRow key={f.id} f={f} campaignId={campaignId} canRun={canRun} reload={reload} />
               ))}
             </tbody>
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+function FindingRow({ f, campaignId, canRun, reload }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(f.triage_note || "");
+
+  const patch = async (body) => {
+    setBusy(true);
+    try { await api.patch(`/api/campaigns/${campaignId}/findings/${f.id}`, body); reload(); }
+    catch (e) { alert(e.message); } finally { setBusy(false); }
+  };
+  const retest = async () => {
+    setBusy(true);
+    try { await api.post(`/api/campaigns/${campaignId}/findings/${f.id}/retest`); reload(); }
+    catch (e) { alert(e.message); } finally { setBusy(false); }
+  };
+
+  const statusTone = { fixed: "sev-low", false_positive: "bg-slate-200", accepted_risk: "sev-medium",
+    triaged: "bg-slate-100", open: "bg-slate-100" }[f.status || "open"];
+
+  return (
+    <>
+      <tr className="border-t hover:bg-slate-50 cursor-pointer" onClick={() => setOpen((o) => !o)}>
+        <td className="p-2 text-slate-400">{open ? "▾" : "▸"}</td>
+        <td className="p-2"><Severity level={f.severity} /></td>
+        <td className="p-2">{f.tool}</td>
+        <td className="p-2">{f.category}</td>
+        <td className="p-2 font-mono">{f.plugin}</td>
+        <td className="p-2"><span className={`chip ${statusTone}`}>{STATUS_LABELS[f.status || "open"]}</span></td>
+        <td className="p-2 max-w-xs truncate" title={f.prompt}>{f.prompt?.slice(0, 120)}</td>
+      </tr>
+      {open && (
+        <tr className="border-t bg-slate-50">
+          <td></td>
+          <td colSpan={6} className="p-3 space-y-3">
+            {f.prompt && (
+              <div><div className="text-slate-500 font-semibold mb-1">Prompt</div>
+                <pre className="bg-white border rounded p-2 whitespace-pre-wrap max-h-40 overflow-auto">{f.prompt}</pre></div>
+            )}
+            {f.output && (
+              <div><div className="text-slate-500 font-semibold mb-1">Response</div>
+                <pre className="bg-white border rounded p-2 whitespace-pre-wrap max-h-40 overflow-auto">{f.output}</pre></div>
+            )}
+            {f.reason && (
+              <div><div className="text-slate-500 font-semibold mb-1">Why it failed</div>
+                <div className="bg-white border rounded p-2">{f.reason}</div></div>
+            )}
+            {f.retested_at && (
+              <div className={`rounded p-2 ${f.retest_passed === true ? "sev-low" : f.retest_passed === false ? "sev-high" : "bg-white border"}`}>
+                <div className="font-semibold">
+                  Retest · {new Date(f.retested_at).toLocaleString()} ·{" "}
+                  {f.retest_passed === true ? "now passes ✓" : f.retest_passed === false ? "still fails ✗" : "response captured (review manually)"}
+                </div>
+                {f.retest_output && <pre className="mt-1 whitespace-pre-wrap max-h-32 overflow-auto">{f.retest_output}</pre>}
+              </div>
+            )}
+            {canRun && (
+              <div className="flex flex-wrap items-end gap-3 pt-2 border-t">
+                <div>
+                  <div className="text-slate-500 mb-1">Status</div>
+                  <select className="input w-auto py-1" value={f.status || "open"} disabled={busy}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => patch({ status: e.target.value })}>
+                    {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                  <div className="text-slate-500 mb-1">Triage note</div>
+                  <div className="flex gap-2">
+                    <input className="input py-1 flex-1" value={note} onClick={(e) => e.stopPropagation()}
+                           onChange={(e) => setNote(e.target.value)} placeholder="Add a note…" />
+                    <button className="btn-ghost py-1" disabled={busy} onClick={(e) => { e.stopPropagation(); patch({ triage_note: note }); }}>Save</button>
+                  </div>
+                </div>
+                <button className="btn-primary py-1" disabled={busy} onClick={(e) => { e.stopPropagation(); retest(); }}>
+                  {busy ? "Working…" : "Retest"}
+                </button>
+              </div>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

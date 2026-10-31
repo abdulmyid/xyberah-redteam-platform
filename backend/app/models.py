@@ -116,6 +116,15 @@ class Finding(SQLModel, table=True):
     output: str = Field(default="", sa_column=Column(Text))
     reason: str = Field(default="", sa_column=Column(Text))
     extra: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Triage / remediation lifecycle
+    status: str = "open"  # open | triaged | fixed | accepted_risk | false_positive
+    assignee_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    triage_note: str = Field(default="", sa_column=Column(Text))
+    retest_output: str = Field(default="", sa_column=Column(Text))
+    retest_passed: Optional[bool] = None
+    retested_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[int] = Field(default=None, foreign_key="user.id")
 
 
 class CompanyBranding(SQLModel, table=True):
@@ -218,3 +227,22 @@ class PromptSet(SQLModel, table=True):
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+
+
+class Schedule(SQLModel, table=True):
+    """A recurring campaign. The scheduler creates and starts a new Campaign from
+    `template` (same shape as the create-campaign body: name/target/tools) each time
+    it is due. freq shape: {"kind":"interval","minutes":N} | {"kind":"daily","at":"HH:MM"}
+    | {"kind":"weekly","day":0-6,"at":"HH:MM"} (day 0 = Monday, times in UTC)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: int = Field(foreign_key="company.id", index=True)
+    name: str = ""
+    template: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    freq: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    enabled: bool = True
+    created_by: int = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    last_run_at: Optional[datetime] = None
+    last_campaign_id: Optional[int] = None
+    next_run_at: Optional[datetime] = Field(default=None, index=True)
