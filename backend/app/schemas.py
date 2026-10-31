@@ -159,6 +159,8 @@ class ScheduleIn(BaseModel):
     template: CampaignIn
     freq: Freq = Field(default_factory=Freq)
     enabled: bool = True
+    report_emails: list[str] = Field(default_factory=list)
+    report_format: str = "pdf"  # pdf | attestation
 
 
 class BrandingIn(BaseModel):

@@ -63,7 +63,10 @@ def _smtp_raw() -> Optional[dict[str, Any]]:
     return cfg
 
 
-def send_email(to: str, subject: str, html: str, text: str = "") -> dict[str, Any]:
+def send_email(to: str, subject: str, html: str, text: str = "",
+               attachments: Optional[list[tuple]] = None) -> dict[str, Any]:
+    """attachments: list of (filename, bytes, maintype, subtype), e.g.
+    ("report.pdf", data, "application", "pdf")."""
     cfg = _smtp_raw()
     msg = EmailMessage()
     from_name = (cfg or {}).get("from_name", "Xyberah")
@@ -73,6 +76,9 @@ def send_email(to: str, subject: str, html: str, text: str = "") -> dict[str, An
     msg["Subject"] = subject
     msg.set_content(text or _strip(html))
     msg.add_alternative(html, subtype="html")
+    for att in attachments or []:
+        fname, content, maintype, subtype = att
+        msg.add_attachment(content, maintype=maintype, subtype=subtype, filename=fname)
 
     if not cfg:
         return _write_outbox(to, subject, msg)

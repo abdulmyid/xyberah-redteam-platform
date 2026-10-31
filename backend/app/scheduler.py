@@ -121,6 +121,7 @@ def _launch(s: Session, sch: Schedule, now: datetime) -> int:
         if ps and (ps.company_id == sch.company_id or ps.company_id is None):
             tools["custom_prompts"] = ps.prompts or []
             tools["custom_grading"] = ps.grading or {}
+    tools["_schedule_id"] = sch.id  # so report delivery fires on completion
     stamp = now.strftime("%Y-%m-%d %H:%M UTC")
     campaign = Campaign(
         company_id=sch.company_id,

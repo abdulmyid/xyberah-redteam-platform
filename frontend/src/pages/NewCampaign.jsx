@@ -274,7 +274,7 @@ export default function NewCampaign() {
     catch (e) { alert(e.message); }
   }
   const up = (patch) => setTools((t) => ({ ...t, ...patch }));
-  const [schedule, setSchedule] = useState({ enabled: false, freq: { kind: "daily", at: "02:00", minutes: 1440, day: 0 } });
+  const [schedule, setSchedule] = useState({ enabled: false, freq: { kind: "daily", at: "02:00", minutes: 1440, day: 0 }, report_emails: "", report_format: "pdf" });
   const sfreq = (patch) => setSchedule((s) => ({ ...s, freq: { ...s.freq, ...patch } }));
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -293,7 +293,11 @@ export default function NewCampaign() {
     const payload = { name, description: "", target: t, tools: { ...tools, purpose } };
     try {
       if (schedule.enabled) {
-        await api.post("/api/schedules", { name, template: payload, freq: schedule.freq, enabled: true });
+        await api.post("/api/schedules", {
+          name, template: payload, freq: schedule.freq, enabled: true,
+          report_emails: schedule.report_emails.split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
+          report_format: schedule.report_format,
+        });
         nav("/schedules");
       } else {
         const r = await api.post("/api/campaigns", payload);
@@ -759,6 +763,21 @@ export default function NewCampaign() {
                          onChange={(e) => sfreq({ at: e.target.value })} /></div>
               </>
             )}
+            <div className="w-full border-t pt-3">
+              <label className="label">Email report after each run (optional)</label>
+              <div className="flex flex-wrap items-start gap-2">
+                <textarea className="input flex-1 min-w-[240px] text-sm" rows={2}
+                          value={schedule.report_emails}
+                          onChange={(e) => setSchedule({ ...schedule, report_emails: e.target.value })}
+                          placeholder="security@acme.com, ciso@acme.com" />
+                <select className="input w-auto" value={schedule.report_format}
+                        onChange={(e) => setSchedule({ ...schedule, report_format: e.target.value })}>
+                  <option value="pdf">PDF report</option>
+                  <option value="attestation">Signed attestation</option>
+                </select>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Comma or newline separated. Requires SMTP configured in Settings.</p>
+            </div>
             <p className="text-xs text-slate-500 w-full">Manage recurring scans under <a className="underline" href="/schedules">Schedules</a>.</p>
           </div>
         )}

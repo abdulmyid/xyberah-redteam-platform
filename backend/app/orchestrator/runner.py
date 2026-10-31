@@ -535,4 +535,10 @@ def _finalize(campaign_id: int, stop: threading.Event) -> None:
             notify_campaign(campaign_id)
         except Exception:
             pass
+    if status == "completed":
+        try:
+            from ..report_delivery import maybe_deliver
+            maybe_deliver(campaign_id)
+        except Exception:
+            pass
     _threads.pop(campaign_id, None)

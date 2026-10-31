@@ -30,6 +30,7 @@ export default function Schedules() {
       await api.put(`/api/schedules/${s.id}`, {
         name: full.campaign_name || full.name, template: full.template,
         freq: full.freq, enabled: !s.enabled,
+        report_emails: full.report_emails || [], report_format: full.report_format || "pdf",
       });
       load();
     } catch (e) { alert(e.message); } finally { setBusy(""); }

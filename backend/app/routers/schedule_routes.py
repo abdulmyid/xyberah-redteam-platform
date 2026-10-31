@@ -26,6 +26,7 @@ def _out(sch: Schedule) -> dict:
         "company_id": sch.company_id, "created_at": sch.created_at,
         "last_run_at": sch.last_run_at, "last_campaign_id": sch.last_campaign_id,
         "next_run_at": sch.next_run_at,
+        "report_emails": sch.report_emails or [], "report_format": sch.report_format or "pdf",
         "target_type": (sch.template or {}).get("target", {}).get("type"),
         "campaign_name": (sch.template or {}).get("name"),
     }
@@ -48,6 +49,8 @@ def create_schedule(body: ScheduleIn, user: User = Depends(require_role(Role.ana
         company_id=owner_company, name=body.name, created_by=user.id,
         template=body.template.model_dump(), freq=body.freq.model_dump(),
         enabled=body.enabled, next_run_at=next_run(body.freq.model_dump()),
+        report_emails=[e.strip() for e in body.report_emails if e.strip()],
+        report_format=body.report_format or "pdf",
     )
     session.add(sch)
     session.commit()
@@ -72,6 +75,8 @@ def update_schedule(schedule_id: int, body: ScheduleIn,
     sch.freq = body.freq.model_dump()
     sch.enabled = body.enabled
     sch.next_run_at = next_run(body.freq.model_dump())
+    sch.report_emails = [e.strip() for e in body.report_emails if e.strip()]
+    sch.report_format = body.report_format or "pdf"
     session.add(sch)
     session.commit()
     session.refresh(sch)

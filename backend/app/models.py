@@ -311,3 +311,6 @@ class Schedule(SQLModel, table=True):
     last_run_at: Optional[datetime] = None
     last_campaign_id: Optional[int] = None
     next_run_at: Optional[datetime] = Field(default=None, index=True)
+    # Scheduled report delivery (email the report after each run)
+    report_emails: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    report_format: str = "pdf"  # pdf | attestation
