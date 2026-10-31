@@ -73,6 +73,27 @@ def attack_categories(user: User = Depends(require_role(Role.analyst))):
             "categories": [{"id": k, "desc": v} for k, v in CATEGORIES.items()]}
 
 
+@router.get("/plugin-sources")
+def plugin_sources(user: User = Depends(require_role(Role.analyst))):
+    """Importable prompt sources from the installed scanners (garak probes, PyRIT
+    seed datasets). Read-only — importing copies the prompts into the user's set."""
+    from .. import plugin_library
+    return plugin_library.list_sources()
+
+
+class ImportPluginIn(BaseModel):
+    source_id: str
+
+
+@router.post("/import-plugin")
+def import_plugin(body: ImportPluginIn, user: User = Depends(require_role(Role.analyst))):
+    from .. import plugin_library
+    res = plugin_library.get_prompts(body.source_id)
+    if not res:
+        raise HTTPException(404, "No such plugin source")
+    return res
+
+
 @router.get("/{set_id}")
 def get_set(set_id: int, user: User = Depends(current_user), session: Session = Depends(get_session)):
     return _out(_get_owned(set_id, user, session), full=True)

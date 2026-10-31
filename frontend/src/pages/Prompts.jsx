@@ -105,6 +105,29 @@ export default function Prompts() {
     finally { setGen((x) => ({ ...x, busy: false })); }
   }
 
+  // Import from installed scanner plugins (garak probes / PyRIT datasets)
+  const [sources, setSources] = useState(null);   // null = not loaded yet
+  const [srcSel, setSrcSel] = useState("");
+  const [srcBusy, setSrcBusy] = useState(false);
+  async function loadSources() {
+    setSrcBusy(true); setMsg("Loading plugin sources (first load scans the scanners)…");
+    try { const r = await api.get("/api/prompts/plugin-sources"); setSources(r); setSrcSel(r[0]?.id || ""); setMsg(`${r.length} importable sources.`); }
+    catch (e) { setMsg(e.message); } finally { setSrcBusy(false); }
+  }
+  async function importSource() {
+    if (!srcSel) return;
+    setSrcBusy(true); setMsg("Importing…");
+    try {
+      const r = await api.post("/api/prompts/import-plugin", { source_id: srcSel });
+      setDraft((d) => ({
+        ...d,
+        prompts: (d.prompts ? d.prompts + "\n" : "") + r.prompts.join("\n"),
+        description: d.description || `Imported from ${r.provider}: ${r.source || r.name}`,
+      }));
+      setMsg(`Imported ${r.prompts.length} prompts from ${r.name} (${r.provider}). Edit and save as your own.`);
+    } catch (e) { setMsg(e.message); } finally { setSrcBusy(false); }
+  }
+
   // ---- editor view ---------------------------------------------------------
   if (draft) {
     const promptCount = linesToList(draft.prompts).length;
@@ -164,6 +187,31 @@ export default function Prompts() {
             <button type="button" className="btn-ghost" disabled={gen.busy} onClick={generate}>
               {gen.busy ? "Generating…" : "Generate prompts"}
             </button>
+          </div>
+
+          <div className="border-t pt-3 space-y-2">
+            <div className="font-semibold text-sm">Import from scanner plugins</div>
+            <p className="text-xs text-slate-500">
+              Pull real attack prompts from <b>garak</b> probes and <b>PyRIT</b> datasets (e.g. AdvBench)
+              into this set, then edit. The original plugins are read-only and left unchanged — this
+              creates your own editable copy, with source attribution added to the description.
+            </p>
+            {sources === null ? (
+              <button type="button" className="btn-ghost" disabled={srcBusy} onClick={loadSources}>
+                {srcBusy ? "Loading…" : "Browse importable plugins"}
+              </button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <select className="input w-auto max-w-md" value={srcSel} onChange={(e) => setSrcSel(e.target.value)}>
+                  {sources.map((s) => (
+                    <option key={s.id} value={s.id}>{s.provider} · {s.name} ({s.count})</option>
+                  ))}
+                </select>
+                <button type="button" className="btn-ghost" disabled={srcBusy || !srcSel} onClick={importSource}>
+                  {srcBusy ? "Importing…" : "Import prompts"}
+                </button>
+              </div>
+            )}
           </div>
         </section>
 
