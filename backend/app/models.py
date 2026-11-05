@@ -333,3 +333,111 @@ class Schedule(SQLModel, table=True):
     # Scheduled report delivery (email the report after each run)
     report_emails: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     report_format: str = "pdf"  # pdf | attestation
+
+
+# ---- AI Firewall / LLM gateway --------------------------------------------- #
+class GatewayProvider(SQLModel, table=True):
+    """An upstream LLM provider the gateway forwards to. The provider API key is
+    encrypted at rest and never returned to clients or the UI."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    kind: str = "openai"               # openai | anthropic | openai_compatible | azure_openai
+    base_url: str = ""                 # blank = provider default
+    api_key_enc: str = Field(default="", sa_column=Column(Text))
+    api_version: str = ""              # azure_openai api-version
+    model_map: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))  # alias -> real model
+    timeout_seconds: int = 120
+    enabled: bool = True
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class GatewayPolicy(SQLModel, table=True):
+    """A named set of guardrail + DLP rules applied to gateway consumers."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    description: str = ""
+    block_message: str = "This request was blocked by the AI firewall security policy."
+    block_response: str = "error"      # error (HTTP 403) | message (200 with safety text)
+    restore_pseudonyms: bool = True    # map pseudonym tokens back to originals in responses
+    stream_holdback: int = 0           # look-behind window for streamed output (0 = global default)
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class GatewayRule(SQLModel, table=True):
+    """One detection rule in a policy.
+
+    kind: injection | toxicity | code | dlp | keywords | regex
+    direction: inbound | outbound | both
+    action: block | mask | pseudonymize | hash | anonymize | log
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    policy_id: int = Field(foreign_key="gatewaypolicy.id", index=True)
+    name: str = ""
+    kind: str = "dlp"
+    direction: str = "inbound"
+    action: str = "mask"
+    config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    enabled: bool = True
+    priority: int = 100
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class GatewayConsumer(SQLModel, table=True):
+    """A client application calling the gateway with its own consumer API key.
+    Only the key hash is stored; the plaintext is shown once."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
+    name: str = ""
+    key_prefix: str = ""
+    key_hash: str = Field(default="", index=True)
+    policy_id: Optional[int] = Field(default=None, foreign_key="gatewaypolicy.id")
+    provider_ids: list[int] = Field(default_factory=list, sa_column=Column(JSON))
+    allowed_models: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    requests_per_minute: int = 60      # 0 = unlimited
+    tokens_per_minute: int = 0         # 0 = unlimited
+    cache_enabled: bool = False
+    cache_ttl_seconds: int = 300
+    enabled: bool = True
+    created_by: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utcnow)
+    last_used_at: Optional[datetime] = None
+
+
+class GatewayEvent(SQLModel, table=True):
+    """One proxied request (metadata only, never prompt or response text)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ts: datetime = Field(default_factory=utcnow, index=True)
+    request_id: str = Field(default="", index=True)
+    company_id: Optional[int] = Field(default=None, index=True)
+    consumer_id: Optional[int] = Field(default=None, index=True)
+    consumer_name: str = ""
+    client_ip: str = ""
+    route: str = ""
+    provider: str = ""
+    model: str = ""
+    stream: bool = False
+    status_code: int = 0
+    verdict: str = Field(default="allowed", index=True)  # allowed | masked | blocked | rate_limited | error
+    guardrail_verdict: str = "pass"    # pass | blocked | logged
+    dlp_verdict: str = "clean"         # clean | masked | blocked | logged
+    blocked_direction: str = ""        # inbound | outbound
+    rules_tripped: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    tokens_used: int = 0
+    proxy_latency_ms: float = 0.0
+    upstream_latency_ms: float = 0.0
+    cache_hit: bool = False
+    error: str = ""

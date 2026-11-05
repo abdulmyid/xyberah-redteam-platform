@@ -22,6 +22,39 @@ services:
       - "8000"
     restart: unless-stopped
 
+  # AI Firewall / LLM gateway (same image, separate process). Clients reach it over
+  # TLS through the proxy on ${XYBERAH_GATEWAY_PORT:-8080}; campaigns can use the
+  # internal URL http://gateway:8080.
+  gateway:
+    build:
+      context: ./backend   # same image as backend (layer cache makes this free)
+    image: xyberah-backend:latest
+    depends_on:
+      - backend
+      - redis
+    entrypoint: ["python", "-m", "app.gateway"]
+    working_dir: /opt/xyberah-app
+    environment:
+      XYBERAH_DATA_DIR: /data
+      XYBERAH_REDIS_URL: redis://redis:6379/0
+      XYBERAH_GATEWAY_WORKERS: ${XYBERAH_GATEWAY_WORKERS:-auto}   # auto = min(4, CPUs); 0 = threads only
+    volumes:
+      - data:/data
+      - config:/config
+    expose:
+      - "8080"
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  # Shared rate-limit buckets and response cache for the gateway (ephemeral).
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb",
+              "--maxmemory-policy", "allkeys-lru"]
+    expose:
+      - "6379"
+    restart: unless-stopped
+
   proxy:
     build:
       context: .
@@ -29,10 +62,13 @@ services:
     image: xyberah-proxy:latest
     depends_on:
       - backend
+      - gateway
     environment:
       BACKEND_UPSTREAM: backend:8000
+      GATEWAY_UPSTREAM: gateway:8080
     ports:
       - "${XYBERAH_HTTPS_PORT:-8443}:443"
+      - "${XYBERAH_GATEWAY_PORT:-8080}:8080"
     volumes:
       - certs:/certs
       - caddy_data:/data   # Caddy's internal CA / self-signed cert store

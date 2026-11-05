@@ -51,6 +51,8 @@ Passwords must be at least 10 characters.
 | `XYBERAH_MAX_CONCURRENT_CAMPAIGNS` | `1` | Default per-company concurrency (also set per company). |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` / `AZURE_API_KEY` / `HF_API_TOKEN` | _(empty)_ | Keys for provider targets and the grader. |
 | `XYBERAH_SECRET_KEY` | _(generated, persisted)_ | Signs sessions and derives the at-rest encryption key. Keep it safe. |
+| `XYBERAH_GATEWAY_PORT` | `8080` | Host port for the AI Firewall (HTTPS via the proxy). |
+| `XYBERAH_GATEWAY_WORKERS` | `auto` | Detection process-pool size (`auto` = min(4, CPUs); `0` = threads only). |
 
 After changing `.env`: `docker compose up -d`.
 
@@ -109,6 +111,42 @@ monthly **cost/token budgets** with optional enforcement (blocks new campaigns w
 **Settings → Scanners** shows installed vs latest versions for garak / PyRIT / Inspect AI /
 ModelAudit and lets a global admin update each from PyPI without rebuilding.
 
+## 10a. AI Firewall (LLM gateway)
+
+The `gateway` service is an OpenAI/Anthropic-compatible reverse proxy, published over TLS by
+the proxy at `https://<host>:8080`. It shares the database with the platform and uses `redis`
+for rate limits and caching (it falls back to in-process limits if Redis is down).
+
+1. **AI Firewall → Upstream providers**: add OpenAI, Anthropic, Azure OpenAI or any
+   OpenAI-compatible endpoint (vLLM, Ollama, OpenRouter, LiteLLM). Keys are encrypted at rest.
+   Optional model aliases (`fast=gpt-4.1-mini`) let you swap models without client changes.
+2. **Policies & rules**: create the recommended policy (injection block, secret/card masking,
+   PII pseudonymization, toxic/dangerous-code output block) and add your own rules — custom
+   secret keywords, regex patterns, DLP entity sets — each with a direction and an action.
+   Test it in the **playground** before rollout.
+3. **Consumer keys**: one key per application, with its policy, providers, allowed models,
+   requests/tokens per minute and optional caching. The key is shown once.
+4. Point the app at the gateway: `base_url=https://<host>:8080/v1` (OpenAI SDK) or
+   `base_url=https://<host>:8080` (Anthropic SDK) with the consumer key as the API key.
+
+**Blocking**: by default a violation returns HTTP 403 with a JSON safety payload
+(`error.type = "xyberah_firewall_block"`, the violated rules, and a request ID). Set the policy to
+*message* mode — or send `X-Xyberah-Block-Mode: message` — to receive the safety message as a
+normal assistant reply instead. A streamed response that violates an outbound rule ends with a
+safety notice, `finish_reason: "content_filter"` and an error event.
+
+**Audit**: every request is written to `/data/gateway/audit/gateway-<host>-<date>.jsonl`
+(hash-chained; verify under AI Firewall → Gateway settings), to the traffic log, to syslog/CEF if
+configured, and optionally to stdout. Records hold metadata only: client IP, consumer, tokens,
+rules tripped, verdicts, latency. Prompt and response text is never stored.
+
+**Internal endpoints** (container network only): `http://gateway:8080/metrics` (Prometheus),
+`/readyz`. Campaigns can target `http://gateway:8080/v1/chat/completions` to red-team the firewall
+(tick *Also save as a red-team target* when creating a key).
+
+**Scaling**: run more `gateway` replicas behind the proxy; Redis keeps limits and cache shared,
+and each replica writes its own audit chain file.
+
 ## 11. CI/CD
 
 Create an **API token** (Settings → API tokens), then call `POST /api/ci/scan` to run a scan and
@@ -138,6 +176,9 @@ get a pass/fail gate. See `ci/ci_scan.sh` and the Swagger docs at `/api/docs`.
 - **First build is slow (~15 min)**: it downloads garak/PyRIT/Inspect/ModelAudit and Chromium;
   subsequent builds are cached.
 - **AI generation / rubric grading fails**: the grader model key isn't set (see §4).
+- **AI Firewall returns 502 `upstream_auth_error`**: the provider API key is wrong or missing
+  (AI Firewall → Upstream providers). The gateway hides upstream key errors from clients.
+- **AI Firewall "Gateway unreachable"**: check `docker compose logs gateway redis`.
 - **SSO sign-in fails**: check the public base URL matches the IdP's redirect/ACS URL exactly,
   and that OIDC issuer / SAML cert are correct. Errors surface on the login page.
 - **A scanner stage is skipped**: garak/PyRIT/Inspect don't support browser targets; Inspect

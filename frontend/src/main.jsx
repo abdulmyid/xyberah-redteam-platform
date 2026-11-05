@@ -12,6 +12,7 @@ import Prompts from "./pages/Prompts.jsx";
 import Schedules from "./pages/Schedules.jsx";
 import Console from "./pages/Console.jsx";
 import Settings from "./pages/Settings.jsx";
+import Firewall from "./pages/Firewall.jsx";
 import Layout from "./components/Layout.jsx";
 import "./index.css";
 
@@ -34,6 +35,7 @@ function App() {
       <Route path="/schedules" element={<Protected><Schedules /></Protected>} />
       <Route path="/console" element={<Protected><Console /></Protected>} />
       <Route path="/model-audit" element={<Protected><ModelAudit /></Protected>} />
+      <Route path="/firewall" element={<Protected><Firewall /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

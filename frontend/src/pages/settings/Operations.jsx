@@ -64,6 +64,15 @@ export default function Operations() {
             <Stat label="Prompt sets" value={h.counts.prompt_sets} />
             <Stat label="Schedules" value={h.counts.schedules} />
           </div>
+          {h.gateway && (
+            <div className="card p-4 text-sm flex flex-wrap gap-x-6 gap-y-1">
+              <span className={`chip ${h.gateway.reachable ? "sev-low" : "sev-critical"}`}>AI Firewall {h.gateway.reachable ? "online" : "unreachable"}</span>
+              {h.gateway.reachable && <span>Rate limiter: <b>{h.gateway.limiter}</b></span>}
+              <span>Gateway events: <b>{h.counts.gateway_events}</b></span>
+              <span>Audit files: <b>{mb(h.gateway.audit_bytes)}</b></span>
+              {h.gateway.audit_dropped > 0 && <span className="text-red-700">Dropped audit records: {h.gateway.audit_dropped}</span>}
+            </div>
+          )}
           <div className="card p-4 text-sm grid sm:grid-cols-2 gap-2">
             <div>DB size: <b>{mb(h.storage.db_bytes)}</b></div>
             <div>Campaign data: <b>{mb(h.storage.campaigns_bytes)}</b></div>

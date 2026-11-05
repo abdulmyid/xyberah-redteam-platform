@@ -4,12 +4,13 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import httpx
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from .config import get_settings
 from .db import engine
-from .models import AuditLog, Campaign, Company, Finding, PromptSet, Schedule, User
+from .models import AuditLog, Campaign, Company, Finding, GatewayEvent, PromptSet, Schedule, User
 
 
 def _dir_size(p: Path) -> int:
@@ -49,7 +50,7 @@ def health() -> dict[str, Any]:
             "companies": _count(s, Company), "users": _count(s, User),
             "campaigns": _count(s, Campaign), "findings": _count(s, Finding),
             "audit_rows": _count(s, AuditLog), "prompt_sets": _count(s, PromptSet),
-            "schedules": _count(s, Schedule),
+            "schedules": _count(s, Schedule), "gateway_events": _count(s, GatewayEvent),
         }
 
     from .orchestrator.tools import list_tool_versions
@@ -61,6 +62,13 @@ def health() -> dict[str, Any]:
 
     from .audit import get_syslog
     from .email_service import get_smtp
+    from .routers.gateway_routes import GATEWAY_INTERNAL_URL
+    try:
+        r = httpx.get(f"{GATEWAY_INTERNAL_URL}/healthz", timeout=2.0)
+        gateway = {"reachable": r.status_code == 200, **(r.json() if r.status_code == 200 else {})}
+    except (httpx.HTTPError, ValueError):
+        gateway = {"reachable": False}
+    gateway["audit_bytes"] = _dir_size(st.data_dir / "gateway")
     return {
         "storage": {
             "db_bytes": db_size,
@@ -76,6 +84,7 @@ def health() -> dict[str, Any]:
         "tools": tools,
         "smtp_configured": get_smtp().get("configured", False),
         "syslog_enabled": get_syslog().get("enabled", False),
+        "gateway": gateway,
     }
 
 

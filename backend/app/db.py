@@ -5,7 +5,9 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from .config import get_settings
 
-engine = create_engine(get_settings().db_url, connect_args={"check_same_thread": False})
+# timeout: wait for the SQLite write lock instead of failing fast (the AI Firewall
+# gateway process writes audit rows to the same database).
+engine = create_engine(get_settings().db_url, connect_args={"check_same_thread": False, "timeout": 30})
 
 
 def init_db() -> None:
@@ -13,6 +15,12 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     _add_missing_columns()
+    # WAL lets the gateway write while the platform reads (persistent per DB file).
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+    except Exception:  # e.g. a read-only or network filesystem; keep the default journal
+        pass
 
 
 def _add_missing_columns() -> None:

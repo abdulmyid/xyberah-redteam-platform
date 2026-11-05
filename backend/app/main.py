@@ -10,7 +10,7 @@ from .auth import bootstrap_global_admin
 from .config import get_settings
 from .db import engine, init_db
 from .routers import (admin_routes, audit_routes, auth_routes, campaign_routes,
-                      ci_routes, console_routes, demo_routes, governance_routes,
+                      ci_routes, console_routes, demo_routes, gateway_routes, governance_routes,
                       modelaudit_routes, notify_routes, ops_routes, prompts_routes,
                       report_routes, schedule_routes, scim_routes, settings_routes,
                       sso_routes, target_routes, ticket_routes, tls_routes)
@@ -53,6 +53,7 @@ TAGS_METADATA = [
     {"name": "settings", "description": "Company/user/branding/SMTP/scanner settings."},
     {"name": "tls", "description": "TLS certificate upload/management."},
     {"name": "audit", "description": "Hash-chained audit log and integrity verification."},
+    {"name": "gateway", "description": "AI Firewall: upstream providers, guardrail/DLP policies and rules, consumer keys, traffic log, stats and policy playground."},
 ]
 
 app = FastAPI(
@@ -105,7 +106,7 @@ for r in (auth_routes.router, admin_routes.router, campaign_routes.router,
           ci_routes.router, modelaudit_routes.router, prompts_routes.router,
           schedule_routes.router, notify_routes.router, console_routes.router,
           sso_routes.router, scim_routes.router, governance_routes.router,
-          ticket_routes.router, ops_routes.router):
+          ticket_routes.router, ops_routes.router, gateway_routes.router):
     app.include_router(r)
 
 # Uploaded company logos (served read-only; proxy also serves these)

@@ -38,6 +38,7 @@ export default function Layout({ children }) {
             {link("/prompts", "Prompts")}
             {link("/schedules", "Schedules")}
             {link("/model-audit", "Model Audit")}
+            {link("/firewall", "AI Firewall")}
             {link("/settings", "Settings")}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">

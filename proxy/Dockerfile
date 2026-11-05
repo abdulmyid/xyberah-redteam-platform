@@ -12,6 +12,6 @@ COPY --from=build /app/dist /srv
 COPY proxy/Caddyfile /etc/caddy/Caddyfile
 COPY proxy/entrypoint.sh /usr/local/bin/proxy-entrypoint
 RUN chmod +x /usr/local/bin/proxy-entrypoint && mkdir -p /etc/caddy /certs/custom
-ENV BACKEND_UPSTREAM=backend:8000
-EXPOSE 443
+ENV BACKEND_UPSTREAM=backend:8000 GATEWAY_UPSTREAM=gateway:8080
+EXPOSE 443 8080
 ENTRYPOINT ["/usr/local/bin/proxy-entrypoint"]

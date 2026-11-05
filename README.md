@@ -88,6 +88,21 @@ an **MCP / tool-calling agent** (a base model wired to MCP servers over HTTP/SSE
 - **CI/CD quality gate** — a bearer-token API that runs a scan and fails the build on
   configurable thresholds.
 
+**AI Firewall (LLM gateway)** — a drop-in, OpenAI/Anthropic-compatible reverse proxy on port
+**8080** that protects production LLM traffic:
+- **Guardrails** — prompt-injection & jailbreak detection (obfuscation-resistant signatures + an
+  n-gram semantic analyzer + base64 payload decoding), toxic-output and dangerous-code controls.
+- **DLP** — PII (email, phone, SSN, NINO, IP), Luhn-validated cards, IBAN (mod-97), AWS keys,
+  API tokens, JWTs, private keys, high-entropy secrets, plus custom keywords and regex rules;
+  per rule **block / mask / pseudonymize (restored in the reply) / hash / anonymize / log**,
+  inbound and outbound.
+- **Streaming-safe** — a sliding look-behind window scans SSE chunks before release, so a secret
+  split across chunks is still masked and a violation stops the stream before it is sent.
+- **Operations** — per-key leaky-bucket rate limits (requests and tokens, Redis-backed),
+  exact-match response cache, model aliases/allow-lists, provider keys hidden from clients,
+  a hash-chained JSON audit trail (+ syslog/CEF and stdout), dashboard, traffic log and a
+  policy playground. A consumer key can be saved as a red-team target to attack your own firewall.
+
 **Enterprise**
 - **SSO** — OIDC (Auth-Code + PKCE) and SAML 2.0, with **email-domain → company** just-in-time
   provisioning.
@@ -130,6 +145,13 @@ curl -H "Authorization: Bearer $XYBERAH_TOKEN" \
                         • alerts (Slack/Teams/webhook)
                         Promptfoo (Node) ◀ orchestrates
                         garak / PyRIT / Inspect / ModelAudit venvs ─▶ run against target
+
+  Apps ──HTTPS :8080──▶ proxy ──▶ gateway (AI Firewall, FastAPI + httpx, same image)
+                                    • consumer-key auth, model allow-list, provider routing
+                                    • inbound/outbound guardrails + DLP (process pool)
+                                    • leaky-bucket limits + response cache ◀──▶ redis
+                                    • hash-chained JSONL audit + GatewayEvent rows (shared DB)
+                                    └──▶ OpenAI / Anthropic / Azure / OpenAI-compatible
 ```
 
 A **campaign** runs its selected engines as sequential **stages** (promptfoo → custom → pyrit →

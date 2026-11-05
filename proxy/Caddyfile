@@ -34,3 +34,27 @@ https://:443 {
 		Referrer-Policy strict-origin-when-cross-origin
 	}
 }
+
+# AI Firewall (LLM gateway): OpenAI/Anthropic-compatible API over TLS.
+# Only the public API is routed; /metrics and /readyz stay internal.
+https://:8080 {
+	import /etc/caddy/tls.conf
+
+	@gateway path /v1/* /healthz
+	handle @gateway {
+		reverse_proxy {$GATEWAY_UPSTREAM} {
+			flush_interval -1
+			transport http {
+				read_timeout 15m
+			}
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		-Server
+	}
+}
